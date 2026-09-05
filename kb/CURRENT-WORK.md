@@ -34,15 +34,29 @@ The last two need a real browser to assert against and are T-14's job.
 
 ## What is NOT done, and is genuinely open
 
-- ~~Never pushed.~~ **Pushed 2026-09-05**; `main` is public at 18 commits. The credential
+- **Local `main` is well ahead of `origin/main` and is NOT pushed.** origin sits at the
+  18 commits published 2026-09-05; T-13 and T-15 landed locally on top. The standing directive
+  ("do not push without asking") holds — the owner's go-ahead GA-3 covered his spec and accept
+  gates, not publishing to a public repo. The credential
   audit is in `kb/notes/handoff.md` §10 — all four API keys are absent from every commit, and
   `.env`/`data/`/`*.db` have never been tracked. Two residual identifiers (the name inside two
   commit messages, and the author email on every commit) are permanent unless the owner
   chooses a history rewrite.
-- **Chromium only.** Every browser test used one engine — no second engine runs yet
-  (`scripts/test.sh` is the harness T-14 plugs Firefox/WebKit Playwright runs into).
-- **Large-CSV import is untested.** A chatbot list of thousands of rows would make the
-  per-row search dominate the preview (T-15's bound test lands in `scripts/test.sh`).
+- **Two engines, not three (T-14 — BLOCKED on the owner).** Chromium 10/10 and Firefox 10/10
+  pass via `scripts/test.sh --browsers`. **WebKit cannot launch on this machine**: it needs
+  `libjxl.so.0.8` and `libbacktrace.so.0`, and Ubuntu 24.04 ships only `libjxl0.7` with no
+  `libbacktrace` package at all — so `playwright install-deps` would not fix it either. The
+  webkit project stays wired in and the command **fails loudly** rather than skipping. Awaiting
+  the owner's call: amend AC2 to two engines · try an older Playwright build · containerise.
+- ~~Large-CSV import is untested.~~ **Done 2026-09-05 (T-15).** Bounded concurrency plus a
+  per-run lookup cache: 1000 rows over 50 distinct titles now costs 100 searches, not 2000.
+  Atomicity is unchanged and proved *structurally* — no `await` inside any `with connection()`
+  block, so a cancellation cannot land mid-transaction.
+  **Expect ~251 seconds for a 1000-row preview, not the 0.75s the loop test reports.** IGDB is
+  asked about every row regardless of declared kind and paces at 4/s. Skipping IGDB for
+  `movie`/`anime`/`live-action` rows would be ~5× — at the cost of the "nothing of kind X
+  matched" recovery path. **An open design decision for the owner**, with a test that stops it
+  being taken silently (trade-off table in `kb/notes/handoff.md`).
 - **Test data on the list.** Akira, Outer Wilds and Attack on Titan were added by import
   tests; NieR: Automata and Hollow Knight carry test ratings. Real titles, the owner's to curate.
 - `pipelines.wiring` doctor warn is the unused `feature-regulated` pipeline — same benign
