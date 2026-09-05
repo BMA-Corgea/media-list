@@ -169,11 +169,22 @@ below exists because it found something.
    are the risky surfaces (Pointer Events, 3D transforms, CSS transitions).
 
 5. **~~Large-CSV import~~ — done 2026-09-05 (T-15).** A 1000-row generated CSV now drives
-   the resolver in `tests/test_import_scale.py`, with a wall-clock ceiling the suite enforces
+   the resolver in `tests/test_import_scale.py`, with a ceiling the suite enforces
    (`CEILING_SECONDS`). 4.95s → 0.76s on 1000 distinct titles; a repeated list is 0.07s and
    makes 95% fewer outbound requests. `/api/import/preview` streams NDJSON progress instead of
    returning one blob at the end. The insert loop did not move, and atomicity is proven at 500
    rows with the sabotage halfway through the batch.
+
+   **Read those numbers correctly — they are LOOP TIME, not wall clock.** They are measured
+   with the sources stubbed above the rate limiter, so they say how well this code overlaps
+   the time it is given and nothing about how long an import takes. Driven through
+   `RateLimit` against a mocked transport: **40 rows in 10.04s, IGDB pinned at exactly 4.00
+   requests/second — about 250 seconds for a 1000-row preview.** That is an upstream ceiling,
+   not a code defect, and it is what the owner will actually sit through. The one lever that
+   would move it is a design decision nobody has taken: `_search_all` asks IGDB about every
+   row whatever `kind` the row declares, and skipping IGDB for movies/anime/live-action would
+   be roughly 5× — at the cost of the "nothing of kind X matched — showing every kind"
+   fallback that currently rescues a mis-declared row. See `.autodev/handoffs/T-15.md`.
 
 6. **The owner's actual list.** They planned to generate one with ChatGPT using the prompt in
    `README.md`. When it arrives: paste into `#/transfer` → Preview → settle the ambiguous

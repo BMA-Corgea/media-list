@@ -19,6 +19,21 @@ It is a bound on THIS code's orchestration overhead at a simulated latency. It i
 prediction of real-world wall clock: against live TMDB/IGDB the wall clock is dominated by
 the documented per-source rate limits (see `backend/sources/base.py::RateLimit`), which no
 amount of local concurrency can or should get around.
+
+TWO NUMBERS, AND ONLY ONE OF THEM IS WHAT THE OWNER WILL FEEL
+-------------------------------------------------------------
+`scale_sources` patches `tmdb.search`/`igdb.search`, which sits ABOVE `RateLimit` — so every
+number in this file except the last section was measured with the binding constraint removed.
+
+    0.75s   1000 rows, loop time, sources stubbed          <- the ceiling test below
+    ~250s   1000 rows, wall clock, driven through the limiter
+
+Both are real. The first measures what this code does with the time it is given and is the
+number that catches a structural regression. The second is what the owner will sit through,
+and it is set by IGDB's published 4 requests/second and by `_search_all` asking IGDB about
+EVERY row whatever `kind` the row declares. `test_the_wall_clock_is_set_by_the_rate_limiter`
+at the bottom of this file is the one test that measures it, through a real httpx transport,
+so the suite is never again silent about the constraint that actually decides the answer.
 """
 
 from __future__ import annotations
@@ -47,6 +62,10 @@ SEARCH_LATENCY = 0.002
 #: if concurrency is ever removed. It is deliberately several times the post-fix measurement
 #: (~0.75s) rather than hugging it, because a wall-clock assertion on a shared CI box must
 #: fail on a structural regression, not on a noisy neighbour.
+#:
+#: THIS IS LOOP TIME, NOT WALL CLOCK. It is measured above `RateLimit`, so it says nothing
+#: about how long a real import takes. The honest figure is ~250s for the same 1000 rows —
+#: `test_the_wall_clock_is_set_by_the_rate_limiter` measures it and says where it comes from.
 CEILING_SECONDS = 2.0
 
 
@@ -557,3 +576,89 @@ def test_walking_away_from_a_preview_stops_the_searches(run_async, scale_sources
             "the generator was finalised after all, so this run did not reproduce the "
             "in-send shape and proves nothing about it — check `_client_leaves`."
         )
+
+
+# ── the number the owner will actually feel (T-15 round 2, F5) ────────────────────────────
+#
+# WHY THIS TEST EXISTS.
+# Every other measurement in this file patches `tmdb.search`/`igdb.search`. `RateLimit` sits
+# BELOW those functions, so no test in the suite drove an import through the limiter at all —
+# and the limiter is the only thing that decides how long a real import takes. The ceiling
+# test's 0.75s is a true statement about loop time and a useless prediction of wall clock,
+# and a suite that reports only the flattering number is how a "fast" feature arrives as a
+# four-minute stare at a progress line.
+#
+# So this one mocks at the httpx TRANSPORT (`tests/factories.py::UpstreamTransport`). A call
+# gets there only by passing through `client()`, `*_LIMIT.slot()` and the source module's own
+# parsing — the real path, minus the internet.
+
+#: Small on purpose. At IGDB's published 4/s this costs about two seconds of real sleeping,
+#: and the projection to 1000 rows is arithmetic, not extrapolation from noise.
+WALLCLOCK_ROWS = 8
+
+#: What the projection is allowed to be before this test says the ground moved. Centred on
+#: ~250s (1000 rows / 4 per second) and deliberately wide: it is guarding an order of
+#: magnitude, not a stopwatch.
+PROJECTED_FLOOR, PROJECTED_CEILING = 150.0, 400.0
+
+
+def test_the_wall_clock_is_set_by_the_rate_limiter(client, upstream, cold_igdb_token):
+    """AC6, from the other side: what the documented ceiling COSTS.
+
+    Movie-only rows, and IGDB is still asked about every one of them — `_search_all` queries
+    both sources regardless of the row's declared `kind`. IGDB is the strictest upstream at
+    4/s, so a pure-movie list is paced by a source that cannot match any row in it.
+
+    Measured here and recorded in `.autodev/handoffs/T-15.md`:
+
+        rows=200  elapsed=50.36s  outbound=402  peak_in_flight=3
+          api.themoviedb.org: n=200 avg=4.12/s
+          api.igdb.com:       n=200 avg=4.00/s   <- the binding constraint
+
+    which projects to ~250 seconds for the 1000-row preview the ceiling test reports as
+    0.75s. Skipping IGDB for `kind in {movie, anime, live-action}` would be roughly 5x — and
+    is NOT done here, because `_search_all`'s "nothing of kind X matched — showing every
+    kind" fallback is what keeps a mis-declared kind recoverable, and trading that away is
+    the owner's call to make, not a fix to slip into a performance ticket.
+    """
+    from backend.sources.base import IGDB_LIMIT, TMDB_LIMIT
+
+    transport = upstream(latency=0.02)
+
+    started = time.perf_counter()
+    body = preview_result(client.post("/api/import/preview",
+                                      json={"text": generate_csv(WALLCLOCK_ROWS)}))
+    elapsed = time.perf_counter() - started
+
+    assert len(body["rows"]) == WALLCLOCK_ROWS
+
+    # 1. The limiter really is in the path. If `search` were stubbed, or a call site grew
+    #    without a slot, nothing would have reached this transport at all.
+    assert transport.count("api.themoviedb.org") == WALLCLOCK_ROWS
+    assert transport.count("api.igdb.com") == WALLCLOCK_ROWS, (
+        "IGDB was not asked about every row. That may be an improvement — but it changes the "
+        "wall clock this file documents, so update the number here deliberately rather than "
+        "letting the docs go stale (T-15 F5)."
+    )
+
+    # 2. Every row in this CSV declares kind=movie. IGDB cannot match one of them and is
+    #    still consulted for all of them. This is the shape of the cost, stated as a test.
+    assert all(row["row"]["kind"] == "movie" for row in body["rows"])
+
+    # 3. Departures are paced at the published rate, not merely bounded in number.
+    igdb_rate = transport.rate("api.igdb.com")
+    assert igdb_rate <= IGDB_LIMIT.per_second * 1.25, (
+        f"IGDB requests left at {igdb_rate:.2f}/s against a published ceiling of "
+        f"{IGDB_LIMIT.per_second}/s — the pacing is not being applied (T-15 AC6)."
+    )
+    assert IGDB_LIMIT.per_second < TMDB_LIMIT.per_second  # which is why IGDB sets the shape
+
+    # 4. THE HONEST NUMBER. Not a performance gate — a record, so it cannot quietly rot.
+    projected = elapsed / WALLCLOCK_ROWS * ROWS
+    assert PROJECTED_FLOOR <= projected <= PROJECTED_CEILING, (
+        f"{WALLCLOCK_ROWS} rows took {elapsed:.2f}s through the real limiter, which projects "
+        f"to {projected:.0f}s for a {ROWS}-row preview — outside the recorded "
+        f"{PROJECTED_FLOOR:.0f}-{PROJECTED_CEILING:.0f}s band. Either the rate ceilings moved, "
+        "or `_search_all` stopped asking every source about every row. Both are real changes; "
+        "neither should happen without this number and the handoff's being updated with it."
+    )
