@@ -43,3 +43,15 @@ it lasts until T-1 reaches a terminal state; `tracker.mjs revoke G-1` ends it ea
 
 Build order: **T-2** → T-3 → T-4 → {T-5, T-6, T-7, T-8} → T-9 (after T-6), T-10 (after T-7),
 T-11 (after T-5).
+
+
+## Obligation handed from T-3 to T-4 (2026-09-04)
+
+**A stored TMDB title MUST persist its `media_type`.** TMDB's movie and tv ids are separate
+namespaces — id `30991` is *Cowboy Bebop* as a tv id and *The Curse of the Living Corpse*
+(1964) as a movie id — so `GET /api/details/tmdb/<id>` without a `media_type` cannot be
+answered. T-3 makes it fail loudly with a 400 rather than guess, because guessing returned a
+plausible wrong title with the wrong poster and the wrong IMDb id.
+
+T-4 stores it in the `detail` JSON column. T-6 and T-10 need it too, for any refresh or
+re-resolve.
