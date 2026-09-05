@@ -189,3 +189,94 @@ def test_every_source_module_that_calls_client_also_imported_a_limit():
         )
     # `base` defines the limits; it must not itself be making requests.
     assert "await http" not in inspect.getsource(base)
+
+
+# ── the token exchange, which concurrency made a cold-start problem (T-15 round 2, F4) ────
+
+
+def test_a_cold_start_exchanges_exactly_one_twitch_token(upstream, cold_igdb_token, run_async):
+    """A T-15 REGRESSION, introduced by the thing T-15 exists to do.
+
+    `token()` caches a bearer token on disk and reuses it. That was enough while resolution
+    was SEQUENTIAL: exactly one row could be inside `token()` at a time, so exactly one
+    exchange could ever be in flight and the second row found the cache warm.
+
+    Concurrency broke it. `SEARCH_CONCURRENCY` rows now start together, all eight miss the
+    same cold cache, and all eight POST to Twitch — measured at 8 exchanges in 3.75s where 1
+    is correct. Each one also takes an `IGDB_LIMIT` slot, so a cold import spends its first
+    two seconds of IGDB budget on seven token exchanges nobody needed, at the exact moment
+    the first eight rows are trying to search.
+
+    The limiter is left at its real published rate here on purpose: 4/s is what makes seven
+    redundant exchanges cost real time rather than nothing.
+    """
+    transport = upstream(latency=0.01)
+
+    async def eight_rows_at_once() -> None:
+        await asyncio.gather(*(igdb.search(f"Game {n}") for n in range(8)))
+
+    started = time.monotonic()
+    run_async(eight_rows_at_once())
+    elapsed = time.monotonic() - started
+
+    exchanges = transport.count("id.twitch.tv")
+    assert exchanges == 1, (
+        f"{exchanges} Twitch token exchanges for one cold import — eight rows starting "
+        f"together each missed the cache and each authenticated ({elapsed:.2f}s). One row "
+        "should exchange and the other seven should wait for it (T-15 F4)."
+    )
+    assert transport.count("api.igdb.com") == 8, "the searches themselves did not all happen"
+
+
+def test_a_warm_token_is_not_re_exchanged(upstream, cold_igdb_token, monkeypatch, run_async):
+    """The lock must not have turned the cache into a per-call exchange.
+
+    A second batch, on an already-warm cache, must add NO exchanges at all — the fast path
+    has to stay outside the lock, or every IGDB call in the process serialises behind it.
+
+    Paced loosely here (this is about COUNTS, not wall clock) so the suite does not spend two
+    seconds proving something arithmetic. The real rate is measured in the test above.
+    """
+    monkeypatch.setattr(igdb, "IGDB_LIMIT", RateLimit("igdb", per_second=1000, open_requests=8))
+    transport = upstream(latency=0.005)
+
+    async def four(label: str) -> None:
+        await asyncio.gather(*(igdb.search(f"{label} {n}") for n in range(4)))
+
+    run_async(four("First"))
+    after_first = transport.count("id.twitch.tv")
+    run_async(four("Second"))
+
+    assert after_first == 1
+    assert transport.count("id.twitch.tv") == 1, (
+        "a warm cache still exchanged another token — `token()`'s fast path is not being "
+        "taken any more."
+    )
+
+
+def test_the_token_lock_does_not_serialise_the_searches_behind_it(
+    upstream, cold_igdb_token, monkeypatch, run_async
+):
+    """The lock guards the EXCHANGE, not the searches.
+
+    A lock held across the whole of `token()` — or worse, across `_query` — would quietly
+    turn IGDB into a one-request-at-a-time source and undo the fetch phase T-15 exists for.
+    Measured at the transport, which is below every limiter: more than one IGDB request has
+    to be genuinely open at once.
+
+    The rate ceiling is relaxed for this one, because at the real 4/s the pacing alone would
+    keep requests one at a time and the assertion could not tell a lock from a limit.
+    """
+    monkeypatch.setattr(igdb, "IGDB_LIMIT", RateLimit("igdb", per_second=1000, open_requests=8))
+    transport = upstream(latency=0.05)
+
+    async def eight() -> None:
+        await asyncio.gather(*(igdb.search(f"Overlap {n}") for n in range(8)))
+
+    run_async(eight())
+
+    assert transport.count("id.twitch.tv") == 1
+    assert transport.peak > 1, (
+        "never more than one request open at a time — the token lock is being held across "
+        "the searches, not just across the exchange."
+    )
