@@ -60,6 +60,10 @@ assert config.db_path == _TEST_DATA_DIR / "test.db", (
 )
 assert "media-list-tests-" in str(config.db_path), config.db_path
 
+# `fake_source` lives in tests/factories.py, shared across test modules this way rather than
+# duplicated per file or piled into this already-load-bearing conftest.
+pytest_plugins = ["tests.factories"]
+
 
 # ── AC6: no network by default ───────────────────────────────────────────────────────────
 # `config.py` calls `load_dotenv(REPO_ROOT / ".env")` at import — on the owner's machine
