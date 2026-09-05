@@ -45,6 +45,12 @@
 
   /* ── meaning ─────────────────────────────────────────────────────────────────────── */
   --star:        #d99518;
+
+  /* Wheel segment tints, one per kind. Tokens, so a skin restyles the wheel too. */
+  --wheel-a:     #d9c9b6;
+  --wheel-b:     #c9d3dc;
+  --wheel-c:     #d3cfc0;
+  --wheel-d:     #cdd7cb;
   --seen:        #4a7c59;
 
   /* ── shape and depth ─────────────────────────────────────────────────────────────── */
@@ -81,6 +87,10 @@
     --accent-ink:  #1a1815;
     --accent-soft: #33211c;
     --star:        #edb64a;
+    --wheel-a:   #2c2a3a;
+    --wheel-b:   #23303c;
+    --wheel-c:   #33302a;
+    --wheel-d:   #22332c;
     --seen:        #6ea87d;
     --shadow:      0 1px 2px rgba(0, 0, 0, .5), 0 8px 24px rgba(0, 0, 0, .45);
     --shadow-lift: 0 4px 10px rgba(0, 0, 0, .55), 0 22px 48px rgba(0, 0, 0, .6);
@@ -420,6 +430,32 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .qrow { grid-template-columns: 18px 24px 38px 1fr; }
   .qrow__open { display: none; }
 }
+
+
+/* ── the wheel ──────────────────────────────────────────────────────────────────────── */
+.wheel { position: relative; display: grid; place-items: center; min-height: 400px; margin: 6px 0 18px; }
+.wheel__disc { width: 380px; max-width: 88vw; height: auto; will-change: transform; }
+.wheel__wedge { stroke: var(--bg); stroke-width: 2; }
+.wheel__hub { fill: var(--bg); stroke: var(--line-strong); stroke-width: 2; }
+.wheel__label { font: 600 12px var(--font); fill: var(--ink); pointer-events: none; }
+.wheel__pointer {
+  position: absolute; top: -4px; left: 50%; margin-left: -11px; z-index: 2;
+  width: 0; height: 0;
+  border-left: 11px solid transparent; border-right: 11px solid transparent;
+  border-top: 20px solid var(--accent);
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .3));
+}
+.wheel__controls { display: grid; place-items: center; margin-bottom: 26px; }
+.btn--spin { padding: 12px 34px; font-size: 16px; font-weight: 600; letter-spacing: .02em; }
+
+.reveal { display: grid; place-items: center; }
+.reveal__card { display: flex; gap: 22px; padding: 20px; max-width: 620px; animation: reveal-in var(--dur-slow) var(--ease-out) both; }
+.reveal__art { width: 140px; flex: 0 0 140px; }
+.reveal__text { display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+.reveal__note { margin: 0; color: var(--muted); font-size: 13px; }
+.reveal__title { margin: 0; font: 600 24px/1.15 var(--font-display); letter-spacing: -.015em; }
+.reveal .actions { margin-top: 12px; }
+@keyframes reveal-in { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
 
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
