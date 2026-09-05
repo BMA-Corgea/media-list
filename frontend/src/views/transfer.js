@@ -134,6 +134,13 @@ export async function transferView() {
       if (entry.row.year) head.append(Object.assign(document.createElement('span'), { className: 'card__meta', textContent: entry.row.year }));
       item.append(head);
 
+      // WHY THE ROW SAYS WHICH KIND OF NOTHING IT FOUND (T-15 AC6 / F3).
+      // `backend/main.py` records the upstream's own message on `entry.error` when a source
+      // failed for this row. Without rendering it, "rate limited — try again shortly" and
+      // "genuinely not on TMDB" are the same pixels — both just `no match found` — so the
+      // owner hand-searches titles that were never missing instead of re-running the import.
+      // That cascade is the exact reason the outbound ceiling exists (`sources/base.py`).
+      if (entry.error) item.append(Object.assign(document.createElement('p'), { className: 'hint bad', textContent: entry.error }));
       if (entry.note) item.append(Object.assign(document.createElement('p'), { className: 'hint', textContent: entry.note }));
 
       if (entry.candidates?.length) {
