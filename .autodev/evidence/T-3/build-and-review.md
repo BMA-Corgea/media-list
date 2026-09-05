@@ -60,3 +60,33 @@ This ticket added routes, so T-2's traversal check was re-run as required:
 - Search deliberately does **not** download artwork — caching every candidate's poster on
   every keystroke would pull megabytes per character. Caching happens at `/api/details`,
   which is the call that precedes storing. Recorded in the plan before it was built.
+
+---
+
+# Follow-up: the IGDB gap is closed (2026-09-04, same day)
+
+Evan supplied both Twitch credentials after T-3 closed. Every deferred check now runs live.
+
+| Deferred check | Result |
+| --- | --- |
+| Twitch `client_credentials` exchange | **Token acquired**, 30 chars, cached at `0600` under gitignored `data/` |
+| AC1 IGDB half | `hollow knight` → 11 IGDB results, 0 TMDB · `disco elysium` → 6 IGDB + **3 TMDB** · `outer wilds` → 4 IGDB + 1 TMDB |
+| AC1 merge behaviour | `disco elysium` returns the **2019 game** *and* the **2025 live-action series** as separate candidates — the same disambiguation value as the Cowboy Bebop case, across sources this time |
+| AC5 games have no IMDb | `igdb/14593` → `imdb_id: null`, link `https://www.igdb.com/games/hollow-knight`, genres `Platform/Adventure/Indie`, developer **Team Cherry**, 10 platforms |
+| T-4 add path with a game | Stored at position 40, `link_label: IGDB`, local `/art/` poster — the capture path needed no change for games |
+
+## Correcting an overclaim
+
+The games amendment justified IGDB over RAWG by saying its box art is *"roughly the same 2:3
+ratio as a film poster."* Measured, that is **near, not identical**:
+
+| Source | Measured | Ratio |
+| --- | --- | --- |
+| TMDB posters | 500 × 750 | **0.67** |
+| IGDB cover (`t_cover_big`) | 264 × 352 | **0.75** |
+| TMDB backdrops / IGDB screenshots | 1280 × 720 | 1.78 |
+
+A 0.75 image in a 0.67 frame crops about 11% off the sides under `background-size: cover` —
+fine, and invisible on box art, which is not composed to the edges. The decision stands: the
+alternative was RAWG's **1.78 landscape**, which would have needed a second card shape. But
+"the same ratio" was too strong, and the number is recorded here instead.

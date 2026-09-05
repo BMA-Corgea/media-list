@@ -3,8 +3,8 @@
   "slug": "add-a-title-search-and-pick",
   "type": "feature",
   "title": "Add a title: search-and-pick",
-  "stage": "gate",
-  "status": "awaiting_approval",
+  "stage": "monitor",
+  "status": "observing",
   "spec": "The primary success criterion. A search field; typing shows candidate cards WITH POSTERS as you type (debounced); clicking one adds it — title, year, kind, summary, artwork, IMDb link and genres all populated from T-3 with zero typing. Optional 'why' field, free text, one line. New titles append to the end of the queue with status=queued. Duplicate tmdb_id is refused with a clear message pointing at the existing entry. HARD RULE: no field for summary, poster URL, or IMDb link is ever presented to the user — if a human is typing metadata this ticket has failed. ACCEPT: adding Cowboy Bebop takes one search and one click, and the resulting record carries poster, backdrop, summary, year, kind and a working IMDb link.",
   "pipeline_version": "feature@v1",
   "modifiers": [],
@@ -23,11 +23,11 @@
     "monitor"
   ],
   "passport": [
-    "2026-09-05 advanced queue → locate · queue on unrecorded",
-    "2026-09-05 advanced locate → plan · locate on unrecorded",
-    "2026-09-05 advanced plan → build · plan on unrecorded",
-    "2026-09-05 advanced build → auto-review · build on unrecorded",
-    "2026-09-05 advanced auto-review → gate · auto-review on unrecorded"
+    "2026-09-05 advanced verify → uat · verify on unrecorded",
+    "2026-09-05 gate accept cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
+    "2026-09-05 advanced uat → release · uat on unrecorded",
+    "2026-09-05 gate deploy cleared by policy:unattended",
+    "2026-09-05 advanced release → monitor · release on unrecorded"
   ],
   "assignees": {},
   "links": {
@@ -38,9 +38,9 @@
   ],
   "gates": {
     "spec_ready": true,
-    "merge": false,
-    "accept": false,
-    "deploy": false,
+    "merge": true,
+    "accept": true,
+    "deploy": true,
     "sp_decide": false,
     "ex_decide": false,
     "compliance": false
@@ -93,6 +93,30 @@
       "to": "gate",
       "by": "agent:claude(on-behalf:evan,GA-1)",
       "at": "2026-09-05T04:20:47.045Z"
+    },
+    {
+      "from": "gate",
+      "to": "verify",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:20:47.144Z"
+    },
+    {
+      "from": "verify",
+      "to": "uat",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:20:47.202Z"
+    },
+    {
+      "from": "uat",
+      "to": "release",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:20:47.305Z"
+    },
+    {
+      "from": "release",
+      "to": "monitor",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:20:47.353Z"
     }
   ],
   "receipts": {
@@ -150,6 +174,38 @@
       "fingerprint": "REVIEWED. No new defects survived: the one found during the build (brand button border) was fixed and re-verified before this stage. Deliberate decisions re-examined and left standing, each with its reason: (1) duplicates are caught via sqlite3.IntegrityError on the (source,source_id) unique index rather than a SELECT-then-INSERT, which is the only race-safe option; (2) DELETE does not evict cached artwork because files are content-addressed and two titles can legitimately share an image, so reference counting would cost more than the bytes; (3) the search debounce also ABORTS the in-flight request, without which a slow early response can land after a fast later one and the grid answers a query the user has typed past — this is why AC6 measures requests rather than trusting the timer; (4) the outbound link is DERIVED at serialisation from imdb_id or detail.igdb_url rather than stored, because a single stored link column would be null for every game. All new component classes (.grid, .card__frame, .card__remove, .card__why, .addbar, .hint, .nav) were added to base.css rather than to a view, so alternate skins keep covering surfaces written after them — verified by screenshotting the populated list under nocturne.",
       "by": "agent:claude(on-behalf:evan,GA-1)",
       "at": "2026-09-05T04:20:47.043Z",
+      "model": "unrecorded"
+    },
+    "gate": {
+      "evidence": "MERGE gate, unattended, green: committed on main; the one defect found during build was fixed before the gate, not deferred past it.",
+      "kind": "other",
+      "fingerprint": "MERGE gate, unattended, green: committed on main; the one defect found during build was fixed before the gate, not deferred past it.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:20:47.142Z",
+      "model": "unrecorded"
+    },
+    "verify": {
+      "evidence": "VERIFIED: every AC re-run against the live app in Chromium after the brand fix and rebuild — AC9 removal took the grid 3 cards to 2, brand border 0px, zero pageerrors. Live TMDB data throughout, no mocks. Inherited T-2 traversal regression untouched by this ticket (no route or static-mount changes). Not covered: games (credentials incomplete), Chromium only, still no automated runner.",
+      "kind": "other",
+      "fingerprint": "VERIFIED: every AC re-run against the live app in Chromium after the brand fix and rebuild — AC9 removal took the grid 3 cards to 2, brand border 0px, zero pageerrors. Live TMDB data throughout, no mocks. Inherited T-2 traversal regression untouched by this ticket (no route or static-mount changes). Not covered: games (credentials incomplete), Chromium only, still no automated runner.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:20:47.201Z",
+      "model": "unrecorded"
+    },
+    "uat": {
+      "evidence": "ACCEPT cleared under GA-1. VISION-CONFORMANCE against T-1: success-shape item 1 says adding must be search-and-pick and states the failure condition outright — 'if a user is ever asked to type a summary or paste an image URL, this has failed'. The DOM audit answers that directly: two inputs, one of which is the search box. The screenshot at .autodev/evidence/T-4/search-and-pick.png is T-1's thesis rendered — three Cowboy Bebops, three posters, three kind chips, one click each. Against non-goals: no episode tracking, no sharing, no recommendations, no wider bind. Nothing descoped.",
+      "kind": "other",
+      "fingerprint": "ACCEPT cleared under GA-1. VISION-CONFORMANCE against T-1: success-shape item 1 says adding must be search-and-pick and states the failure condition outright — 'if a user is ever asked to type a summary or paste an image URL, this has failed'. The DOM audit answers that directly: two inputs, one of which is the search box. The screenshot at .autodev/evidence/T-4/search-and-pick.png is T-1's thesis rendered — three Cowboy Bebops, three posters, three kind chips, one click each. Against non-goals: no episode tracking, no sharing, no recommendations, no wider bind. Nothing descoped.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:20:47.303Z",
+      "model": "unrecorded"
+    },
+    "release": {
+      "evidence": "MONITOR — nothing deployed; runs on demand on loopback. Regressions carried forward for later tickets: the SPA traversal check (T-11 will touch static mounts), the media_type obligation (now discharged here, still owed by T-6 and T-10 on any refresh path), and the IGDB live path. Zero errors at close.",
+      "kind": "other",
+      "fingerprint": "MONITOR — nothing deployed; runs on demand on loopback. Regressions carried forward for later tickets: the SPA traversal check (T-11 will touch static mounts), the media_type obligation (now discharged here, still owed by T-6 and T-10 on any refresh path), and the IGDB live path. Zero errors at close.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:20:47.351Z",
       "model": "unrecorded"
     }
   }
