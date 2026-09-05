@@ -32,3 +32,8 @@ __pycache__/
 # factory ledger and generated day pages stay local (public repo, owner's request 2026-09-05)
 .autodev/
 kb/days/
+
+# T-13 test tooling (mirrors the runtime rules above)
+.pytest_cache/
+.coverage
+htmlcov/
