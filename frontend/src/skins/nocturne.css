@@ -1,0 +1,46 @@
+/* ═══════════════════════════════════════════════════════════════════════════════════════
+   NOCTURNE — the room with the lights off and the screen on.
+
+   The reference is a cinema before the film starts: a near-black ground that is blue rather
+   than grey, one warm amber that reads as projector light, and no surface bright enough to
+   compete with a poster.
+
+   ── What makes it work ────────────────────────────────────────────────────────────────
+   1. THE GROUND IS BLUE-BLACK, NOT GREY. #0b0d14 against a poster reads as depth; a neutral
+      #111 reads as an unstyled dark mode.
+   2. THE ACCENT IS WARM AND THE GROUND IS COOL. That opposition is the whole trick — it is
+      why the accent looks like light falling on something rather than a UI colour.
+   3. SURFACES SEPARATE BY LIFT, NOT BY LINE. Borders are barely there; the shadows do the
+      work, which is what keeps a wall of cards from turning into a grid of boxes.
+
+   Nothing here is unscoped. Every rule lives under the attribute, which is the contract.
+   ═══════════════════════════════════════════════════════════════════════════════════════ */
+
+:root[data-theme="nocturne"] {
+  --canvas:      #0b0d14;
+  --bg:          #141824;
+  --surface-2:   #1c2130;
+  --scrim:       rgba(4, 5, 9, 0.74);
+
+  --ink:         #edf0f7;
+  --muted:       #98a1b8;
+  --faint:       #5d6579;
+
+  --line:        #232939;
+  --line-strong: #333b4f;
+
+  /* projector amber against the blue-black — warm accent, cool ground */
+  --accent:      #e8a33d;
+  --accent-ink:  #16120a;
+  --accent-soft: #2b2213;
+
+  --star:        #f0b849;
+  --seen:        #5fae86;
+
+  --shadow:      0 1px 2px rgba(0, 0, 0, .6), 0 10px 30px rgba(0, 0, 0, .55);
+  --shadow-lift: 0 6px 14px rgba(0, 0, 0, .65), 0 28px 60px rgba(0, 0, 0, .7);
+}
+
+/* Cards float rather than sit in cells: the border recedes and the lift carries separation. */
+:root[data-theme="nocturne"] .panel { border-color: color-mix(in srgb, var(--line) 60%, transparent); }
+:root[data-theme="nocturne"] .poster { box-shadow: var(--shadow), 0 0 0 1px rgba(255, 255, 255, .04); }

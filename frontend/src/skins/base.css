@@ -1,0 +1,236 @@
+/* ═══════════════════════════════════════════════════════════════════════════════════════
+   BASE — the tokens and the component layer.
+
+   ── The contract (ported from ../repo-tour/assets/skins/base.css) ─────────────────────
+   A skin is ONE file at `src/skins/<name>.css` whose rules are ALL scoped under
+   `:root[data-theme="<name>"]`, plus ONE row in `src/skins.js`. Nothing else changes.
+
+   THIS FILE IS THE BASE and is special in one way: it owns the bare `:root`, so it is the
+   only file here that ships unscoped rules. It carries the tokens AND the component layer,
+   which is why an alternate that redefines nothing but tokens re-skins the whole app —
+   including surfaces built by tickets that did not exist when the alternate was written.
+   T-5 through T-11 must therefore reach for these classes rather than inventing colours.
+
+   Bare `:root` is the light ground. The system-dark block is scoped `:root:not([data-theme])`
+   so it applies ONLY while no skin has been chosen; the moment one is, that skin wins
+   outright instead of fighting the media query.
+
+   ── The one design rule this app lives by ─────────────────────────────────────────────
+   THE ARTWORK IS THE COLOUR. Every poster on the wall is already loud and none of them
+   agree with each other, so the chrome stays quiet: near-neutral grounds, one accent, and
+   contrast carried by weight and spacing rather than hue. A palette that competes with the
+   posters is the spreadsheet problem wearing a nicer coat.
+   ═══════════════════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── grounds ─────────────────────────────────────────────────────────────────────── */
+  --canvas:      #f4f2ef;   /* the page itself */
+  --bg:          #ffffff;   /* raised surfaces: cards, bars, panels */
+  --surface-2:   #eae7e2;   /* recessed: wells, empty states, inputs */
+  --scrim:       rgba(20, 18, 16, 0.55);   /* over imagery, so text survives any poster */
+
+  /* ── ink ─────────────────────────────────────────────────────────────────────────── */
+  --ink:         #1a1815;
+  --muted:       #6d6862;
+  --faint:       #9a938b;
+
+  /* ── structure ───────────────────────────────────────────────────────────────────── */
+  --line:        #dcd7d0;
+  --line-strong: #c3bcb2;
+
+  /* ── the single accent ───────────────────────────────────────────────────────────── */
+  --accent:      #b3452c;
+  --accent-ink:  #ffffff;
+  --accent-soft: #f6e6e1;
+
+  /* ── meaning ─────────────────────────────────────────────────────────────────────── */
+  --star:        #d99518;
+  --seen:        #4a7c59;
+
+  /* ── shape and depth ─────────────────────────────────────────────────────────────── */
+  --radius:      10px;
+  --radius-sm:   6px;
+  --shadow:      0 1px 2px rgba(20, 18, 16, .07), 0 8px 24px rgba(20, 18, 16, .09);
+  --shadow-lift: 0 4px 10px rgba(20, 18, 16, .12), 0 22px 48px rgba(20, 18, 16, .18);
+
+  /* ── type ────────────────────────────────────────────────────────────────────────── */
+  --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font);
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* ── motion. Every animated surface reads these, so reduced-motion is one override ── */
+  --ease-out:    cubic-bezier(.16, .84, .44, 1);
+  --dur-fast:    120ms;
+  --dur:         240ms;
+  --dur-slow:    520ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --canvas:      #14120f;
+    --bg:          #1e1b17;
+    --surface-2:   #272320;
+    --scrim:       rgba(8, 7, 6, 0.68);
+    --ink:         #f0ece6;
+    --muted:       #a49c92;
+    --faint:       #6f675e;
+    --line:        #322d28;
+    --line-strong: #443d36;
+    --accent:      #e2705a;
+    --accent-ink:  #1a1815;
+    --accent-soft: #33211c;
+    --star:        #edb64a;
+    --seen:        #6ea87d;
+    --shadow:      0 1px 2px rgba(0, 0, 0, .5), 0 8px 24px rgba(0, 0, 0, .45);
+    --shadow-lift: 0 4px 10px rgba(0, 0, 0, .55), 0 22px 48px rgba(0, 0, 0, .6);
+  }
+}
+
+/* ═══ reset ══════════════════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font: 15px/1.55 var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; display: block; }
+a { color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* ═══ the component layer ════════════════════════════════════════════════════════════
+   Everything below is what an alternate skin inherits for free. Later tickets add
+   markup, not colour.                                                                  */
+
+/* ── shell ───────────────────────────────────────────────────────────────────────── */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px;
+  padding: 12px 22px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+.brand { font: 600 17px/1 var(--font-display); letter-spacing: -.01em; }
+.brand em { font-style: normal; color: var(--accent); }
+.grow { flex: 1 1 auto; }
+.page { max-width: 1240px; margin: 0 auto; padding: 28px 22px 72px; }
+
+.section-title {
+  font: 600 13px/1 var(--font);
+  letter-spacing: .09em; text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 14px;
+}
+
+/* ── controls ────────────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 8px 15px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  cursor: pointer;
+  transition: background var(--dur-fast), border-color var(--dur-fast), transform var(--dur-fast);
+}
+.btn:hover { border-color: var(--accent); }
+.btn:active { transform: translateY(1px); }
+.btn--primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn--primary:hover { filter: brightness(1.06); }
+.btn--ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.btn--ghost:hover { color: var(--ink); background: var(--surface-2); }
+.btn--round { width: 40px; height: 40px; padding: 0; border-radius: 999px; }
+
+.chip {
+  padding: 5px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
+}
+.chip:hover { color: var(--ink); border-color: var(--line-strong); }
+.chip[aria-pressed="true"] {
+  background: var(--accent-soft); border-color: var(--accent); color: var(--accent);
+  font-weight: 600;
+}
+
+.field {
+  width: 100%;
+  padding: 10px 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.field:focus { outline: 2px solid var(--accent); outline-offset: 1px; background: var(--bg); }
+
+.skinpick {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  cursor: pointer;
+}
+
+/* ── surfaces ────────────────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/* The poster. 2:3 is the whole reason IGDB was chosen over RAWG for games — every card on
+   the wall is the same shape whether it is a film, a series, or Hollow Knight. */
+.poster {
+  aspect-ratio: 2 / 3;
+  width: 100%;
+  border-radius: var(--radius);
+  background: var(--surface-2) center/cover no-repeat;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.card { display: flex; flex-direction: column; gap: 9px; cursor: pointer; }
+.card .poster { transition: transform var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out); }
+.card:hover .poster { transform: translateY(-4px); box-shadow: var(--shadow-lift); }
+.card__title { font-weight: 600; line-height: 1.25; }
+.card__meta { color: var(--muted); font-size: 13px; }
+
+.kind {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px; font-weight: 600;
+  letter-spacing: .05em; text-transform: uppercase;
+}
+
+.stars { color: var(--star); letter-spacing: 2px; }
+.stars .off { color: var(--faint); }
+
+.empty {
+  padding: 64px 24px;
+  text-align: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--muted);
+}
+.empty h2 { color: var(--ink); font-weight: 600; margin: 0 0 8px; }
+
+/* Any surface laid over artwork reads through this, so text survives a bright poster. */
+.scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, var(--scrim), transparent 62%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}

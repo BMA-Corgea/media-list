@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>media-list</title>
+    <!--
+      PRE-PAINT SKIN APPLY — deliberately an inline CLASSIC script, not a module.
+
+      Vite defers `<script type="module">` until after the document parses, so a skin applied
+      from the bundle would land one paint too late and the page would flash the default on
+      every load. A page that blinks cream on the way to black is worse than one that was
+      always cream. This runs before the body exists, which is the whole point.
+
+      It duplicates three lines from src/skins.js on purpose: those lines cannot come from the
+      bundle without reintroducing the flash.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('media-list:skin');
+          if (stored && stored !== 'system') document.documentElement.setAttribute('data-theme', stored);
+        } catch (e) {
+          /* private window, blocked storage — the system palette is a fine answer */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,46 @@
+/* ═══════════════════════════════════════════════════════════════════════════════════════
+   PAPERBACK — a secondhand bookshop shelf, in daylight.
+
+   The reference is the spine-out shelf of a used bookshop: warm off-white paper, ink that
+   is brown-black rather than pure black, and one faded library-stamp red.
+
+   ── What makes it work ────────────────────────────────────────────────────────────────
+   1. NOTHING IS PURE. No #fff and no #000 anywhere — paper is cream and old ink is brown.
+      One pure white surface in here immediately reads as a web form.
+   2. LINES DO THE WORK, NOT SHADOWS. This is the inverse of Nocturne on purpose: in
+      daylight a heavy drop shadow looks like a mistake, so structure comes from hairlines
+      and the shadows go nearly flat.
+   3. THE RED IS FADED. A saturated red on cream is a warning; a dusty one is a stamp.
+
+   Shipped so the skin contract is proven in BOTH brightnesses — a second dark theme would
+   never have exercised the light path.
+   ═══════════════════════════════════════════════════════════════════════════════════════ */
+
+:root[data-theme="paperback"] {
+  --canvas:      #efe9dc;
+  --bg:          #faf6ec;
+  --surface-2:   #e5dccb;
+  --scrim:       rgba(46, 38, 28, 0.5);
+
+  --ink:         #2b2318;
+  --muted:       #6f6455;
+  --faint:       #a2967f;
+
+  --line:        #d9cfb9;
+  --line-strong: #bdb096;
+
+  --accent:      #9c3b30;
+  --accent-ink:  #faf6ec;
+  --accent-soft: #ecdcd4;
+
+  --star:        #b8801f;
+  --seen:        #4f7a4a;
+
+  /* Nearly flat: in daylight, lift is drawn with a line, not a shadow. */
+  --shadow:      0 1px 0 rgba(43, 35, 24, .07);
+  --shadow-lift: 0 2px 0 rgba(43, 35, 24, .1), 0 10px 22px rgba(43, 35, 24, .1);
+}
+
+:root[data-theme="paperback"] .panel { border-color: var(--line-strong); }
+:root[data-theme="paperback"] .poster { box-shadow: 0 0 0 1px rgba(43, 35, 24, .12), var(--shadow); }
+:root[data-theme="paperback"] .section-title { letter-spacing: .14em; }
