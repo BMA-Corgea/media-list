@@ -270,6 +270,175 @@ def export_csv() -> PlainTextResponse:
     )
 
 
+#: How many rows resolve their sources at once during an import (T-15 AC6).
+#:
+#: This is also the number of outbound requests this app will have in flight at once, because
+#: a row's sources are consulted one after another (see `_search_all`). It is set from IGDB's
+#: published maximum of 8 OPEN REQUESTS — the strictest ceiling any row can hit — so no
+#: upstream ever sees more connections open than it says it will hold. How FAST those requests
+#: leave is a separate ceiling, bounded per source in `backend/sources/base.py::RateLimit`,
+#: because a concurrency cap is not a rate.
+#:
+#: It applies ONLY to the two FETCH phases — resolving a preview, and `import_commit`'s
+#: prepare-everything-first loop — both of which run outside any transaction. It must never
+#: reach the insert loop; that loop's own comment says what depends on it staying sequential.
+SEARCH_CONCURRENCY = 8
+
+
+async def _search_all(title: str) -> list[dict]:
+    """Every configured source's candidates for one title, in source order.
+
+    Sequential WITHIN a title on purpose. Today a TMDB failure means IGDB is never consulted
+    and the row comes back `unmatched`; T-15 is a performance ticket and is not the place to
+    change what a row means. The parallelism goes ACROSS titles, which is where the 2000
+    strictly-sequential round trips of a 1000-row list actually were.
+    """
+    found: list[dict] = []
+    if tmdb.available():
+        found += await tmdb.search(title)
+    if igdb.available():
+        found += await igdb.search(title)
+    return found
+
+
+class _Lookups:
+    """One search per distinct title, per run — the import's cache and its throttle (AC5).
+
+    There was no cache at all before T-15: two rows naming the same title paid for the same
+    two round trips twice, and a chatbot list of a franchise ("Gundam", "Gundam Wing",
+    "Gundam SEED") makes that the common case rather than the corner case.
+
+    Keyed on the TITLE ALONE, because the title is the entire input to the search call —
+    `year` and `kind` are applied afterwards, per row, when ranking what came back. So this
+    subsumes AC5's "identical title+year" and additionally collapses two rows that disagree
+    about the year, which is the same search either way.
+
+    What is stored is the in-flight TASK, not its result, so two rows starting together share
+    one round trip instead of racing to fill the cache twice. A task that FAILED stays in the
+    map on purpose: a run that could not resolve one title must not turn around and ask 999
+    more times — that is exactly the 429 cascade the outbound ceiling exists to prevent.
+    """
+
+    def __init__(self, concurrency: int = SEARCH_CONCURRENCY) -> None:
+        self.gate = asyncio.Semaphore(concurrency)
+        self.tasks: dict[str, asyncio.Task] = {}
+
+    async def _search(self, title: str) -> list[dict]:
+        async with self.gate:
+            return await _search_all(title)
+
+    async def get(self, title: str) -> list[dict]:
+        key = " ".join(title.split()).casefold()
+        task = self.tasks.get(key)
+        if task is None:
+            task = self.tasks[key] = asyncio.create_task(self._search(title))
+        return await task
+
+    def close(self) -> None:
+        """Stop anything still running, and read every failure that nobody read.
+
+        A client that walked away must not leave the rest of a thousand searches burning
+        quota on a preview no one will ever see. The `exception()` call is not decoration:
+        an unretrieved task exception is logged by asyncio at garbage-collection time, which
+        would print a scary traceback for a request that was cancelled perfectly normally.
+        """
+        for task in self.tasks.values():
+            if not task.done():
+                task.cancel()
+            elif not task.cancelled():
+                task.exception()
+
+
+async def _resolve_row(row: dict, existing: set, lookups: _Lookups) -> dict:
+    """What WOULD happen to one CSV row. Writes nothing, decides nothing on its own."""
+    entry = {"row": row, "state": None, "chosen": None, "candidates": []}
+
+    if row["tmdb_id"] or row["igdb_id"]:
+        # An id from a previous export: trust it and skip the search entirely. This is
+        # what makes an export round-trip exactly rather than approximately.
+        source = "tmdb" if row["tmdb_id"] else "igdb"
+        source_id = row["tmdb_id"] or row["igdb_id"]
+        # TMDB ids are namespace-scoped (T-3): a stored kind tells us which one.
+        media_type = None
+        if source == "tmdb":
+            media_type = "tv" if row["kind"] in ("anime", "live-action") else "movie"
+        entry["chosen"] = {"source": source, "source_id": source_id, "media_type": media_type,
+                           "title": row["title"], "year": row["year"], "kind": row["kind"]}
+        entry["state"] = "duplicate" if (source, source_id) in existing else "matched"
+        return entry
+
+    try:
+        found = await lookups.get(row["title"])
+    except SourceError as error:
+        entry["state"] = "unmatched"
+        entry["error"] = error.detail
+        return entry
+
+    # A DECLARED KIND IS A FILTER, NOT A PREFERENCE.
+    # There is a 1998 Cowboy Bebop VIDEO GAME as well as the 1998 anime — same title,
+    # same year. Scoring alone put them 28 points apart, close enough that a small weight
+    # change either way would have silently imported the game as the anime. If the row
+    # says what it is, candidates of another kind are not answers to it.
+    pool = found
+    if row["kind"]:
+        same_kind = [c for c in found if c.get("kind") == row["kind"]]
+        if same_kind:
+            pool = same_kind
+        else:
+            entry["note"] = f"nothing of kind {row['kind']!r} matched — showing every kind"
+
+    ranked = sorted(pool, key=lambda c: csvio.score(c, row), reverse=True)[:6]
+    if not ranked:
+        entry["state"] = "unmatched"
+    else:
+        best, second = ranked[0], (ranked[1] if len(ranked) > 1 else None)
+        gap = csvio.score(best, row) - (csvio.score(second, row) if second else -999)
+        entry["candidates"] = ranked
+        # A clear winner is proposed; anything close is handed back for a human choice.
+        # Guessing between two plausible titles is exactly the silent failure this
+        # importer exists to avoid.
+        if gap >= 35 and csvio.score(best, row) >= 100:
+            entry["chosen"] = best
+            entry["state"] = "duplicate" if (best["source"], best["source_id"]) in existing else "matched"
+        else:
+            entry["state"] = "choose"
+    return entry
+
+
+async def _resolve_rows(rows: list[dict], existing: set, note=None) -> list[dict]:
+    """Every row resolved, at most `SEARCH_CONCURRENCY` searches in flight.
+
+    Entries come back in FILE ORDER — `asyncio.gather` preserves the order of what it was
+    given, whatever order the searches actually finished in. That is what keeps "import order
+    becomes your initial queue order" (README) true once these entries reach `import_commit`'s
+    sequential insert loop and its `top += 10`.
+
+    `note` is called once per row as it settles, so a caller can report progress without this
+    function knowing anything about how that progress is delivered.
+    """
+    lookups = _Lookups()
+
+    async def one(row: dict) -> dict:
+        try:
+            return await _resolve_row(row, existing, lookups)
+        finally:
+            if note is not None:
+                note()
+
+    tasks = [asyncio.create_task(one(row)) for row in rows]
+    try:
+        return await asyncio.gather(*tasks)
+    except BaseException:
+        # `gather` does NOT cancel its siblings when one of them raises. Without this, an
+        # unexpected failure would leave hundreds of searches running against the upstreams
+        # on behalf of a response that is already lost.
+        for task in tasks:
+            task.cancel()
+        raise
+    finally:
+        lookups.close()
+
+
 @api.post("/import/preview")
 async def import_preview(payload: dict = Body(...)) -> JSONResponse:
     """Resolve a CSV against the sources and report what WOULD happen. Writes nothing.
@@ -282,67 +451,7 @@ async def import_preview(payload: dict = Body(...)) -> JSONResponse:
         return JSONResponse({"rows": [], "problems": problems, "counts": {}})
 
     existing = {(r["source"], r["source_id"]) for r in query("SELECT source, source_id FROM titles")}
-    resolved = []
-
-    for row in rows:
-        entry = {"row": row, "state": None, "chosen": None, "candidates": []}
-
-        if row["tmdb_id"] or row["igdb_id"]:
-            # An id from a previous export: trust it and skip the search entirely. This is
-            # what makes an export round-trip exactly rather than approximately.
-            source = "tmdb" if row["tmdb_id"] else "igdb"
-            source_id = row["tmdb_id"] or row["igdb_id"]
-            # TMDB ids are namespace-scoped (T-3): a stored kind tells us which one.
-            media_type = None
-            if source == "tmdb":
-                media_type = "tv" if row["kind"] in ("anime", "live-action") else "movie"
-            entry["chosen"] = {"source": source, "source_id": source_id, "media_type": media_type,
-                               "title": row["title"], "year": row["year"], "kind": row["kind"]}
-            entry["state"] = "duplicate" if (source, source_id) in existing else "matched"
-            resolved.append(entry)
-            continue
-
-        try:
-            found = []
-            if tmdb.available():
-                found += await tmdb.search(row["title"])
-            if igdb.available():
-                found += await igdb.search(row["title"])
-        except SourceError as error:
-            entry["state"] = "unmatched"
-            entry["error"] = error.detail
-            resolved.append(entry)
-            continue
-
-        # A DECLARED KIND IS A FILTER, NOT A PREFERENCE.
-        # There is a 1998 Cowboy Bebop VIDEO GAME as well as the 1998 anime — same title,
-        # same year. Scoring alone put them 28 points apart, close enough that a small weight
-        # change either way would have silently imported the game as the anime. If the row
-        # says what it is, candidates of another kind are not answers to it.
-        pool = found
-        if row["kind"]:
-            same_kind = [c for c in found if c.get("kind") == row["kind"]]
-            if same_kind:
-                pool = same_kind
-            else:
-                entry["note"] = f"nothing of kind {row['kind']!r} matched — showing every kind"
-
-        ranked = sorted(pool, key=lambda c: csvio.score(c, row), reverse=True)[:6]
-        if not ranked:
-            entry["state"] = "unmatched"
-        else:
-            best, second = ranked[0], (ranked[1] if len(ranked) > 1 else None)
-            gap = csvio.score(best, row) - (csvio.score(second, row) if second else -999)
-            entry["candidates"] = ranked
-            # A clear winner is proposed; anything close is handed back for a human choice.
-            # Guessing between two plausible titles is exactly the silent failure this
-            # importer exists to avoid.
-            if gap >= 35 and csvio.score(best, row) >= 100:
-                entry["chosen"] = best
-                entry["state"] = "duplicate" if (best["source"], best["source_id"]) in existing else "matched"
-            else:
-                entry["state"] = "choose"
-        resolved.append(entry)
+    resolved = await _resolve_rows(rows, existing)
 
     counts = {}
     for entry in resolved:
@@ -354,8 +463,6 @@ async def import_preview(payload: dict = Body(...)) -> JSONResponse:
         "rows": resolved, "problems": problems, "counts": counts,
         "existing": [f"{source}:{source_id}" for source, source_id in sorted(existing)],
     })
-
-
 @api.post("/import/commit")
 async def import_commit(payload: dict = Body(...)) -> JSONResponse:
     """Write the confirmed rows. All of them, or none of them.
@@ -370,24 +477,65 @@ async def import_commit(payload: dict = Body(...)) -> JSONResponse:
 
     # Fetch everything FIRST, outside the transaction: network calls inside an open write
     # transaction would hold a lock for the length of the slowest upstream request.
+    #
+    # Bounded concurrency lives HERE, in the fetch phase, and nowhere else (T-15). What comes
+    # out is an ordered list of already-resolved records; the transaction below then does
+    # nothing but write, one row at a time, on one connection.
     prepared, failures = [], []
-    for entry in entries:
+    gate = asyncio.Semaphore(SEARCH_CONCURRENCY)
+    fetched: dict[tuple, asyncio.Task] = {}
+
+    async def fetch_once(source: str, source_id: str, media_type: str | None) -> dict:
+        async with gate:
+            return await _fetch(source, source_id, media_type)
+
+    async def prepare(entry: dict) -> tuple:
         chosen = entry.get("chosen") or {}
         source, source_id = chosen.get("source"), str(chosen.get("source_id") or "")
         if not source or not source_id:
-            failures.append({"title": entry.get("row", {}).get("title"), "error": "no choice made"})
-            continue
+            return None, {"title": entry.get("row", {}).get("title"), "error": "no choice made"}
+        # The same title chosen twice in one batch is fetched once. The insert loop still
+        # sees BOTH entries and still reports the second as already on the list — that
+        # decision belongs to the transaction, not to this cache.
+        key = (source, source_id, chosen.get("media_type"))
+        task = fetched.get(key)
+        if task is None:
+            task = fetched[key] = asyncio.create_task(fetch_once(*key))
         try:
-            record = await _fetch(source, source_id, chosen.get("media_type"))
+            record = await task
         except (SourceError, HTTPException) as error:
-            failures.append({"title": entry.get("row", {}).get("title"),
-                             "error": getattr(error, "detail", str(error))})
-            continue
-        prepared.append((record, entry.get("row") or {}))
+            return None, {"title": entry.get("row", {}).get("title"),
+                          "error": getattr(error, "detail", str(error))}
+        return (record, entry.get("row") or {}), None
+
+    tasks = [asyncio.create_task(prepare(entry)) for entry in entries]
+    try:
+        # `gather` preserves the order it was given, so `prepared` stays in FILE ORDER
+        # however the fetches interleaved — which is what the queue positions below depend on.
+        outcomes = await asyncio.gather(*tasks)
+    except BaseException:
+        for task in (*tasks, *fetched.values()):
+            task.cancel()
+        raise
+    for ok, failure in outcomes:
+        if failure is not None:
+            failures.append(failure)
+        else:
+            prepared.append(ok)
 
     if not prepared:
         raise HTTPException(400, {"detail": "nothing could be resolved", "failures": failures})
 
+    # ── ONE transaction, ONE connection, STRICTLY SEQUENTIAL ────────────────────────────
+    # Nothing below this line may be made concurrent. Two properties depend on it, and both
+    # are silent when broken:
+    #   * the per-row duplicate SELECT sees the UNCOMMITTED inserts of earlier rows in this
+    #     same batch, because it runs on this same connection. That is the whole mechanism
+    #     for in-batch duplicates;
+    #   * `top += 10` walks queue positions forward in file order (T-7's gap-tolerant
+    #     scheme). It has no parallel form.
+    # And the guarantee itself: `db.connection()` commits once at the end and rolls the whole
+    # thing back on any exception, which is only meaningful while this is one unit of work.
     added, skipped = [], []
     with connection() as conn:
         top = conn.execute("SELECT COALESCE(MAX(queue_position), 0) FROM titles").fetchone()[0]

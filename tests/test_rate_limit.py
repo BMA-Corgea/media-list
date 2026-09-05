@@ -54,6 +54,19 @@ def test_the_published_ceilings_are_what_base_documents():
     assert (ANILIST_LIMIT.per_second, ANILIST_LIMIT.open_requests) == (1.5, 4)
 
 
+def test_igdb_is_the_strictest_upstream_and_therefore_sets_the_shape():
+    """The reason `SEARCH_CONCURRENCY` is 8 and not larger lives in this comparison."""
+    from backend.main import SEARCH_CONCURRENCY
+
+    assert IGDB_LIMIT.per_second == min(
+        IGDB_LIMIT.per_second, TMDB_LIMIT.per_second
+    ), "TMDB is now the tighter limit — SEARCH_CONCURRENCY's stated reasoning is stale"
+    assert SEARCH_CONCURRENCY <= min(IGDB_LIMIT.open_requests, TMDB_LIMIT.open_requests), (
+        "the import fetch phase may start more requests at once than an upstream says it "
+        "will hold open"
+    )
+
+
 # ── the limiter works ─────────────────────────────────────────────────────────────────────
 
 
