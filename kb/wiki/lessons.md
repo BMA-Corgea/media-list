@@ -9,6 +9,77 @@ type: reference
 Durable lessons land here as the project runs — one entry per lesson, newest first, each
 citing the ticket/incident it came from.
 
+## TWICE NOW: a test that proves a path the real system does not take (T-13, T-15)
+
+Read this one before writing the next test in this repo. It is not a fact about asyncio or
+about httpx; it is the failure mode this project keeps producing, and it has cost two
+loopbacks on two consecutive tickets.
+
+| ticket | the test | the path it exercised | the path production takes |
+| --- | --- | --- | --- |
+| T-13 F1 | path traversal | httpx normalised `/../../.env` to `/.env` before it left the client | uvicorn passes `../../.env` through intact |
+| T-15 F1 | abandoned preview | `await events.aclose()` throws into the generator, so its `finally` runs | Starlette cancels mid-`send`, the generator is never resumed, and its `finally` never runs |
+
+Both tests passed. Both fixes were wrong. In both cases the test and the bug agreed with each
+other about how the system behaves, so the test could not possibly catch it — the guard and
+its proof shared one false assumption, which is the only way a green suite hides a live
+defect.
+
+**The tell is the same in both:** the test reached the behaviour under test through a
+convenience the real caller does not have. `aclose()` and `client.get()` are both "the easy
+way to make that happen", and easy was exactly the problem — the real caller is a socket
+closing, or a byte string arriving off the wire, and neither is polite.
+
+So, when a test covers what happens on an ABNORMAL path — a disconnect, a cancellation, a
+timeout, a malformed request, a crash — write down the mechanism by which the real system
+gets there, in one sentence, before writing the test. Then check the test uses that
+mechanism and not a stand-in for it. If it uses a stand-in, say so in the test, and find a
+second case that does not.
+
+## An async generator's `finally` is not a cleanup guarantee (T-15)
+
+The concrete case behind the entry above. `/api/import/preview` cancelled its resolver from
+the streaming generator's `finally`:
+
+```python
+    worker = asyncio.create_task(run())
+    try:
+        ...
+        yield _ndjson(progress)      # <- the client leaves while we are parked HERE
+    finally:
+        worker.cancel()              # <- and this never runs
+```
+
+An async generator's `finally` runs only when the FRAME IS RESUMED — by `athrow`, by
+`aclose`, or by a garbage collector at some unspecified later time. Starlette's
+`StreamingResponse.__call__` races `stream_response` against `listen_for_disconnect` in an
+anyio task group and cancels the scope when the client goes, and where that cancellation
+lands decides everything:
+
+* inside `await body_iterator.__anext__()` — thrown into the generator, `finally` runs;
+* inside `await send(chunk)` — the generator stays suspended at its `yield`, untouched.
+
+The second is the branch production takes, because uvicorn awaits `flow.drain()` whenever the
+write buffer is paused, which is exactly the state a large streamed response with a departing
+client is in. Measured, 600 rows, disconnect after 40 searches: the in-anext shape stopped
+dead; the in-send shape sent **1072 more searches** to TMDB and IGDB on behalf of a client
+that had already gone.
+
+**Hang cleanup off something with a defined moment, not off a frame that may never resume.**
+For a `StreamingResponse` that is `background=BackgroundTask(...)`: `__call__` awaits it after
+the task group unwinds, and an anyio cancel scope absorbs its own cancellation, so the line is
+reached on the disconnect path exactly as on the success path — whatever the generator is
+doing. `backend/main.py::_PreviewRun` is the shape.
+
+Two things that make the new test able to fail: it drives the real
+`StreamingResponse.__call__` over the real ASGI three-tuple with a `send` that never returns
+(a paused write buffer, in one line), and it asserts that the searches stopped *while
+`body_iterator.ag_frame` was still a frame* — i.e. the guarantee cannot be coming from
+generator finalisation. And note `httpx.MockTransport` is no good for building that kind of
+test: it calls a SYNC handler, so a whole request can complete without yielding to the loop
+and nothing ever interleaves. `tests/factories.py::UpstreamTransport` has a real `await` in
+it for that reason.
+
 ## "Nothing was added" is not proof that a rollback happened (T-15)
 
 T-15 had to prove T-10's atomicity guarantee still holds with a concurrent fetch phase in
