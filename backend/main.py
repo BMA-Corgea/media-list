@@ -575,8 +575,14 @@ async def _preview_events(run: _PreviewRun):
     `frontend/src/api.js` turns that back into a thrown Error — a stream that merely stopped
     would otherwise be indistinguishable from a successful empty preview.
 
-    The final line is the complete result in the same shape this endpoint returned before.
-    Everything ahead of it is progress a client is free to ignore.
+    THIS IS NOT AN ADDITIVE CHANGE, and an earlier draft of this docstring said it was. The
+    content type moved from `application/json` to `application/x-ndjson` and the body is no
+    longer valid JSON as a whole — only the FINAL LINE kept the shape this endpoint used to
+    return. A client that ignores the earlier lines still has to split the body on newlines
+    and parse the last one; it cannot hand the whole response to a JSON parser any more. The
+    blast radius was two consumers, both updated in the same commit set, and the README never
+    documented this endpoint (so AC7 is genuinely untouched) — but "additive" is the wrong
+    word for it and would mislead the next reader.
     """
     yield _ndjson({"event": "start", "total": run.total, "problems": run.problems})
 

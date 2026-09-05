@@ -416,8 +416,13 @@ def test_progress_is_emitted_while_the_resolver_is_still_working(run_async, scal
 
 
 def test_the_last_line_of_the_stream_is_the_whole_answer(client, scale_sources):
-    """The progress channel is additive: a client that ignores it gets exactly what it used
-    to get, in the same shape, from the final line alone."""
+    """The FINAL LINE alone is exactly what this endpoint used to return, in the same shape.
+
+    Not the same as saying the change was additive, which an earlier docstring did say: the
+    content type moved to `application/x-ndjson` and the body as a whole is no longer valid
+    JSON. A client still has to split on newlines and parse the last line. What this pins is
+    the narrower and true claim — the shape of that last line did not move.
+    """
     result = _stream(client, repeated_csv(40, 10))[-1]
 
     assert set(result) == {"event", "rows", "problems", "counts", "existing"}
