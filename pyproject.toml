@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+# Repo root importable as `backend.*` regardless of how pytest is invoked (T-13).
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "live: hits a real TMDB/AniList/IGDB endpoint over the network with real credentials — skipped by default, run with `scripts/test.sh --live` (T-13 AC6).",
+]

@@ -1,0 +1,4 @@
+# Test-only dependencies. Kept out of requirements.txt so the runtime install (what
+# start.sh needs) stays four lines; only scripts/test.sh installs this file.
+pytest>=8.0,<10
+pytest-cov>=6.0,<8
