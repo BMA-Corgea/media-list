@@ -53,6 +53,12 @@
   --wheel-d:     #cdd7cb;
   --seen:        #4a7c59;
 
+  /* Text laid over a PHOTOGRAPH, which has its own brightness regardless of the skin. This
+     cannot be --ink: in a light skin --ink is near-black, and near-black over a dark still is
+     unreadable. A token rather than a literal so a skin can still override it. */
+  --ink-over-art:      #ffffff;
+  --ink-over-art-soft: rgba(255, 255, 255, .82);
+
   /* ── shape and depth ─────────────────────────────────────────────────────────────── */
   --radius:      10px;
   --radius-sm:   6px;
@@ -355,8 +361,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .hero__poster { width: 190px; flex: 0 0 190px; }
 .hero__head { padding-bottom: 6px; }
 /* Over artwork the text needs its own contrast; on a plain ground it must not go white. */
-.hero--art .hero__head { color: #fff; text-shadow: 0 1px 14px rgba(0, 0, 0, .75); }
-.hero--art .hero__head .kind { background: rgba(255, 255, 255, .16); color: #fff; }
+.hero--art .hero__head { color: var(--ink-over-art); text-shadow: 0 1px 14px rgba(0, 0, 0, .75); }
+.hero--art .hero__head .kind { background: rgba(255, 255, 255, .16); color: var(--ink-over-art); }
 
 .title__name { margin: 8px 0 0; font: 600 34px/1.1 var(--font-display); letter-spacing: -.02em; }
 .title__alt  { margin: 6px 0 0; opacity: .8; font-size: 14px; }
@@ -499,6 +505,38 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .cand.is-chosen { border-color: var(--accent); background: var(--accent-soft); }
 .cand__art { aspect-ratio: 2 / 3; border-radius: var(--radius-sm); background: var(--surface-2) center/cover no-repeat; }
 .cand__meta { font-size: 11px; line-height: 1.3; color: var(--muted); white-space: pre-line; }
+
+
+/* ── ambient chrome (T-11) ──────────────────────────────────────────────────────────
+   Pexels imagery is texture and nothing else. Every photograph sits UNDER a token-driven
+   scrim, so the skin decides the mood and the picture only supplies grain. That is also why
+   these surfaces still read correctly if the images are missing entirely — the gradient is
+   the design and the photograph is the bonus.                                            */
+.empty {
+  position: relative; overflow: hidden;
+  background-image: linear-gradient(var(--surface-2), var(--surface-2)), url("/chrome/empty-wall.jpg");
+  background-size: cover; background-position: center;
+  background-blend-mode: color;
+}
+.empty > * { position: relative; }
+
+.page--wall {
+  background-image: radial-gradient(120% 70% at 50% 0%, var(--surface-2) 0%, transparent 70%),
+                    url("/chrome/carousel-ground.jpg");
+  background-size: cover; background-position: center top;
+  background-blend-mode: color, normal;
+  background-repeat: no-repeat;
+  margin: 0 -22px; padding-left: 22px; padding-right: 22px;
+}
+
+.archive-banner {
+  position: relative; overflow: hidden;
+  margin: 0 0 20px; padding: 26px 22px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: linear-gradient(var(--scrim), var(--scrim)), url("/chrome/archive-header.jpg") center/cover no-repeat;
+}
+.archive-banner h2 { margin: 0; font: 600 21px/1.2 var(--font-display); color: var(--ink-over-art); }
+.archive-banner p { margin: 5px 0 0; color: var(--ink-over-art-soft); font-size: 13.5px; }
 
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }

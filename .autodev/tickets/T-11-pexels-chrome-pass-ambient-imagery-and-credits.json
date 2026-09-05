@@ -3,8 +3,8 @@
   "slug": "pexels-chrome-pass-ambient-imagery-and-credits",
   "type": "feature",
   "title": "Pexels chrome pass: ambient imagery and credits",
-  "stage": "intake",
-  "status": "triage",
+  "stage": "gate",
+  "status": "awaiting_approval",
   "spec": "Use the Pexels key to dress the surfaces T-5 built: shelf/kind headers, the empty state, the backdrop behind the carousel, the Seen archive header. AMBIENT IMAGERY ONLY — Pexels is never a source of title artwork; stock photos cannot supply key art and a poster wall made of them is the spreadsheet problem in costume. Follow GLP-Strong-App's pattern: a fetch script that runs ONCE and saves files into the frontend's public tree, plus a credits.json recording creator, license, source URL, photographer URL, alt text and why each image was chosen. These images ARE committed (they are generic and a fresh clone should look right) — unlike title art, which stays in gitignored data/. Images must work under every skin, so they sit behind token-driven scrims rather than dictating colour. ACCEPT: every shipped image has a credits.json row with real attribution; no surface depends on a network call at runtime.",
   "pipeline_version": "feature@v1",
   "modifiers": [],
@@ -23,7 +23,11 @@
     "monitor"
   ],
   "passport": [
-    "2026-09-05 created as feature \"Pexels chrome pass: ambient imagery and credits\" on feature@v1 by agent:claude(on-behalf:evan,session-01PKVMkM)"
+    "2026-09-05 gate spec_ready cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
+    "2026-09-05 advanced plan → build · plan on unrecorded",
+    "2026-09-05 gate spec_ready cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
+    "2026-09-05 advanced build → auto-review · build on unrecorded",
+    "2026-09-05 advanced auto-review → gate · auto-review on unrecorded"
   ],
   "assignees": {},
   "links": {
@@ -33,7 +37,7 @@
     "T-5"
   ],
   "gates": {
-    "spec_ready": false,
+    "spec_ready": true,
     "merge": false,
     "accept": false,
     "deploy": false,
@@ -47,5 +51,106 @@
     "validator_passed": false,
     "attempts": 0
   },
-  "history": []
+  "history": [
+    {
+      "from": "intake",
+      "to": "refine",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:07:07.864Z"
+    },
+    {
+      "from": "refine",
+      "to": "queue",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:07:07.960Z"
+    },
+    {
+      "from": "queue",
+      "to": "locate",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:07:08.051Z"
+    },
+    {
+      "from": "locate",
+      "to": "plan",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:07:08.143Z"
+    },
+    {
+      "from": "plan",
+      "to": "build",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:07:08.233Z"
+    },
+    {
+      "from": "build",
+      "to": "auto-review",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:10:17.075Z"
+    },
+    {
+      "from": "auto-review",
+      "to": "gate",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:10:17.126Z"
+    }
+  ],
+  "receipts": {
+    "intake": {
+      "evidence": "INTAKE: feature, low risk, --intent T-1, --after T-5 (shipped). No duplicate. Last ticket on the branch.",
+      "kind": "other",
+      "fingerprint": "INTAKE: feature, low risk, --intent T-1, --after T-5 (shipped). No duplicate. Last ticket on the branch.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:07:07.864Z",
+      "model": "unrecorded"
+    },
+    "refine": {
+      "evidence": "Spec at .autodev/specs/T-11.md, 8 ACs. AC1 forbids a runtime network call, which is the failure mode a decorative-image feature has. AC3 states the privacy asymmetry explicitly — these images are committed BECAUSE they are generic, while title art stays gitignored because it reveals the list. AC6 and AC7 are regression obligations recorded by earlier tickets: the colour-literal greps from T-5/T-7/T-8/T-9, and T-2's traversal check which this ticket triggers by touching the static tree.",
+      "kind": "other",
+      "fingerprint": "Spec at .autodev/specs/T-11.md, 8 ACs. AC1 forbids a runtime network call, which is the failure mode a decorative-image feature has. AC3 states the privacy asymmetry explicitly — these images are committed BECAUSE they are generic, while title art stays gitignored because it reveals the list. AC6 and AC7 are regression obligations recorded by earlier tickets: the colour-literal greps from T-5/T-7/T-8/T-9, and T-2's traversal check which this ticket triggers by touching the static tree.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:07:07.959Z",
+      "model": "unrecorded"
+    },
+    "queue": {
+      "evidence": "QUEUED: dispatchable — T-5 shipped. Last ticket.",
+      "kind": "other",
+      "fingerprint": "QUEUED: dispatchable — T-5 shipped. Last ticket.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:07:08.050Z",
+      "model": "unrecorded"
+    },
+    "locate": {
+      "evidence": "LOCATE: config.pexels_api_key already loads (T-2) and health already reports it. base.css has .empty, .scrim and the full token set; the carousel, archive and empty states all exist to be dressed. Vite's public/ tree is served by the backend's /assets and index fallback (T-2) — committed, unlike data/ which is gitignored. GLP-Strong-App/public/photos/programs/credits.json is the attribution pattern to copy: creator, license, source, photographer_url, alt, why. RISK: putting images in Vite's public/ means they pass through the SPA fallback path T-2 secured, so AC7 is not optional.",
+      "kind": "other",
+      "fingerprint": "LOCATE: config.pexels_api_key already loads (T-2) and health already reports it. base.css has .empty, .scrim and the full token set; the carousel, archive and empty states all exist to be dressed. Vite's public/ tree is served by the backend's /assets and index fallback (T-2) — committed, unlike data/ which is gitignored. GLP-Strong-App/public/photos/programs/credits.json is the attribution pattern to copy: creator, license, source, photographer_url, alt, why. RISK: putting images in Vite's public/ means they pass through the SPA fallback path T-2 secured, so AC7 is not optional.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:07:08.142Z",
+      "model": "unrecorded"
+    },
+    "plan": {
+      "evidence": "PLAN: (1) scripts/fetch-chrome.py — searches Pexels once per slot, downloads to frontend/public/chrome/, writes credits.json; (2) CSS hooks so each dressed surface reads a background from a token-driven class with a scrim over it; (3) run it, commit the images and credits; (4) re-run the regression greps and the traversal check. DECISIONS: the script is idempotent and skips a slot whose file already exists, so re-running it does not re-spend API quota or churn the committed files; images are downsized-by-request via Pexels' own sized URLs rather than shipping originals; and every image is applied UNDER a token scrim so a skin decides the mood and the photograph only supplies texture.",
+      "kind": "other",
+      "fingerprint": "PLAN: (1) scripts/fetch-chrome.py — searches Pexels once per slot, downloads to frontend/public/chrome/, writes credits.json; (2) CSS hooks so each dressed surface reads a background from a token-driven class with a scrim over it; (3) run it, commit the images and credits; (4) re-run the regression greps and the traversal check. DECISIONS: the script is idempotent and skips a slot whose file already exists, so re-running it does not re-spend API quota or churn the committed files; images are downsized-by-request via Pexels' own sized URLs rather than shipping originals; and every image is applied UNDER a token scrim so a skin decides the mood and the photograph only supplies texture.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:07:08.232Z",
+      "model": "unrecorded"
+    },
+    "build": {
+      "evidence": "BUILT AND PROVEN — .autodev/evidence/T-11/build.md. AC1 proven by recording EVERY request the page made in Playwright: zero left the machine, so no surface depends on a runtime network call. AC2 credits.json carries creator, licence, source, photographer URL, alt and why-this-image for all three (Adrien Olichon, Resource Boy, Charlotte May). AC6 the colour-literal rule re-checked across EVERY ticket's CSS at once: hex NONE, hsl NONE, hued rgba NONE, 151 token refs, 3 neutral black/white alphas. AC7 T-2's traversal regression re-run because this ticket touched the static tree — four payloads including chrome/../../.env all return the SPA shell with 0 secrets. AC8 with the key blanked the script exits 1 explaining what is missing and that the app renders regardless, tested without permanently editing .env. The fetch is idempotent: a second run skips every slot, spending no quota and churning no committed file.",
+      "kind": "other",
+      "fingerprint": "BUILT AND PROVEN — .autodev/evidence/T-11/build.md. AC1 proven by recording EVERY request the page made in Playwright: zero left the machine, so no surface depends on a runtime network call. AC2 credits.json carries creator, licence, source, photographer URL, alt and why-this-image for all three (Adrien Olichon, Resource Boy, Charlotte May). AC6 the colour-literal rule re-checked across EVERY ticket's CSS at once: hex NONE, hsl NONE, hued rgba NONE, 151 token refs, 3 neutral black/white alphas. AC7 T-2's traversal regression re-run because this ticket touched the static tree — four payloads including chrome/../../.env all return the SPA shell with 0 secrets. AC8 with the key blanked the script exits 1 explaining what is missing and that the app renders regardless, tested without permanently editing .env. The fetch is idempotent: a second run skips every slot, spending no quota and churning no committed file.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:10:17.074Z",
+      "model": "unrecorded"
+    },
+    "auto-review": {
+      "evidence": "REVIEWED — one defect, found and fixed, and worth recording as a lesson. I introduced --ink-over-art for text over photographs and USED it without DEFINING it: the insertion anchor in :root no longer matched because T-8 had edited that region. CSS does not complain about an undefined custom property — var() falls back silently — so the archive banner heading rendered in --ink, near-black rgb(26,24,21), over a dark photograph. It was caught only because the test asserted the COMPUTED colour rather than checking the stylesheet contained the right text. After the fix all three skins report rgb(255,255,255) and the title-page hero, which shares the token, does too. The lesson recorded for any future styling work: an undefined CSS custom property fails silently and looks like a deliberate choice, so assert computed values rather than source text. The token itself is justified rather than an exception to the no-literals rule: text over a photograph cannot use --ink because in a light skin that is near-black and unreadable over a dark still, but a bare #fff would have broken the rule every other ticket kept — a token fixes the value to the medium while leaving a skin able to override it.",
+      "kind": "other",
+      "fingerprint": "REVIEWED — one defect, found and fixed, and worth recording as a lesson. I introduced --ink-over-art for text over photographs and USED it without DEFINING it: the insertion anchor in :root no longer matched because T-8 had edited that region. CSS does not complain about an undefined custom property — var() falls back silently — so the archive banner heading rendered in --ink, near-black rgb(26,24,21), over a dark photograph. It was caught only because the test asserted the COMPUTED colour rather than checking the stylesheet contained the right text. After the fix all three skins report rgb(255,255,255) and the title-page hero, which shares the token, does too. The lesson recorded for any future styling work: an undefined CSS custom property fails silently and looks like a deliberate choice, so assert computed values rather than source text. The token itself is justified rather than an exception to the no-literals rule: text over a photograph cannot use --ink because in a light skin that is near-black and unreadable over a dark still, but a bare #fff would have broken the rule every other ticket kept — a token fixes the value to the medium while leaving a skin able to override it.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:10:17.125Z",
+      "model": "unrecorded"
+    }
+  }
 }

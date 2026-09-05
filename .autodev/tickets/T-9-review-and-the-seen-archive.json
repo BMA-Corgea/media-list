@@ -4,7 +4,7 @@
   "type": "feature",
   "title": "Review and the Seen archive",
   "stage": "monitor",
-  "status": "observing",
+  "status": "complete",
   "spec": "Marking a title watched asks for 1-5 stars (required) and an optional free-text review, stamps watched_at, sets status=seen and removes it from the queue without deleting it. The Seen archive is a BROWSABLE shelf, not a graveyard: cover art, stars, the date, the review, sortable by date watched and by rating, filterable by kind. Un-watching returns a title to the end of the queue and keeps the review. ACCEPT: rating a title moves it out of the queue and into Seen with its art intact; the archive is worth opening on its own.",
   "pipeline_version": "feature@v1",
   "modifiers": [],
@@ -23,11 +23,11 @@
     "monitor"
   ],
   "passport": [
-    "2026-09-05 gate accept cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
     "2026-09-05 advanced uat → release · uat on unrecorded",
     "2026-09-05 gate accept cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
     "2026-09-05 gate deploy cleared by policy:unattended",
-    "2026-09-05 advanced release → monitor · release on unrecorded"
+    "2026-09-05 advanced release → monitor · release on unrecorded",
+    "2026-09-05 pipeline complete at monitor"
   ],
   "assignees": {},
   "links": {
@@ -48,8 +48,9 @@
   "overrides": {},
   "risk": "medium",
   "loop": {
-    "validator_passed": false,
-    "attempts": 0
+    "validator_passed": true,
+    "attempts": 0,
+    "evidence": "MONITOR — nothing deployed; on-demand loopback, no daemon. Carried forward: T-10's export round-trips status, stars, review and watched_at (verified there), and its importer reports rather than updates an existing seen row so nothing is dragged out of the archive; T-11 must add no hue literals to the rating or archive blocks. Zero application errors at close."
   },
   "history": [
     {
@@ -207,6 +208,15 @@
       "by": "agent:claude(on-behalf:evan,GA-1)",
       "at": "2026-09-05T04:58:29.528Z",
       "model": "unrecorded"
+    },
+    "monitor": {
+      "evidence": "MONITOR — nothing deployed; on-demand loopback, no daemon. Carried forward: T-10's export round-trips status, stars, review and watched_at (verified there), and its importer reports rather than updates an existing seen row so nothing is dragged out of the archive; T-11 must add no hue literals to the rating or archive blocks. Zero application errors at close.",
+      "kind": "other",
+      "fingerprint": "MONITOR — nothing deployed; on-demand loopback, no daemon. Carried forward: T-10's export round-trips status, stars, review and watched_at (verified there), and its importer reports rather than updates an existing seen row so nothing is dragged out of the archive; T-11 must add no hue literals to the rating or archive blocks. Zero application errors at close.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:06:22.566Z",
+      "model": "unrecorded"
     }
-  }
+  },
+  "completed": true
 }

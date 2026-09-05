@@ -1,0 +1,29 @@
+[
+  {
+    "slug": "empty-wall",
+    "creator": "Adrien Olichon",
+    "license": "Pexels",
+    "source": "https://www.pexels.com/photo/brown-chairs-in-front-of-white-wall-3709370/",
+    "photographer_url": "https://www.pexels.com/@adrien-olichon-1257089",
+    "alt": "An empty auditorium with wooden seats facing a blank theater screen.",
+    "why": "the empty state \u2014 a room waiting for something to start, which is exactly what an empty watchlist is"
+  },
+  {
+    "slug": "carousel-ground",
+    "creator": "Resource Boy",
+    "license": "Pexels",
+    "source": "https://www.pexels.com/photo/texture-school-chalk-chalkboard-18541761/",
+    "photographer_url": "https://www.pexels.com/@resourceboy",
+    "alt": "High-resolution texture of an empty black chalkboard surface for design use.",
+    "why": "the ground behind the carousel \u2014 texture only, deliberately without a subject, so it never competes with the poster art in front of it"
+  },
+  {
+    "slug": "archive-header",
+    "creator": "Charlotte May",
+    "license": "Pexels",
+    "source": "https://www.pexels.com/photo/vintage-film-projector-placed-on-shelf-in-room-5824580/",
+    "photographer_url": "https://www.pexels.com/@charlotte-may",
+    "alt": "Retro film projector placed on glass shelf near brick wall in cozy apartment",
+    "why": "the Seen archive header \u2014 a shelf of finished things, which is what the archive is"
+  }
+]

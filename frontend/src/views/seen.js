@@ -98,7 +98,11 @@ export async function seenView() {
     sorter.append(chip);
   }
 
-  page.append(heading, chips, sorter, grid);
+  const banner = document.createElement('div');
+  banner.className = 'archive-banner';
+  banner.innerHTML = `<h2>Everything you have finished</h2>
+    <p>The shelf, not the bin — it is meant to be worth opening.</p>`;
+  page.append(banner, heading, chips, sorter, grid);
   paint();
 
   if (!all.length) {
@@ -108,7 +112,7 @@ export async function seenView() {
     const go = Object.assign(document.createElement('button'), { className: 'btn btn--primary', textContent: 'See what is up next' });
     go.addEventListener('click', () => navigate('/'));
     empty.append(go);
-    page.replaceChildren(heading, empty);
+    page.replaceChildren(banner, heading, empty);
   }
   return page;
 }
