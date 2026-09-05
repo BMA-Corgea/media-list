@@ -374,7 +374,7 @@ def test_progress_is_emitted_while_the_resolver_is_still_working(run_async, scal
     measures exactly what a browser reading the socket would see, with nothing in between.
     """
     from backend import csvio
-    from backend.main import _preview_events
+    from backend.main import _PreviewRun, _preview_events
 
     rows, problems = csvio.parse(generate_csv(ROWS))
     assert len(rows) == ROWS
@@ -382,7 +382,9 @@ def test_progress_is_emitted_while_the_resolver_is_still_working(run_async, scal
     async def drain() -> list[tuple[float, dict]]:
         started = time.perf_counter()
         seen: list[tuple[float, dict]] = []
-        async for line in _preview_events(rows, problems, set()):
+        # `_PreviewRun` starts a task, so it can only be built with a loop already running —
+        # which is also how the endpoint builds it.
+        async for line in _preview_events(_PreviewRun(rows, problems, set())):
             seen.append((time.perf_counter() - started, json.loads(line)))
         return seen
 
@@ -451,35 +453,102 @@ def test_a_failure_part_way_through_becomes_a_terminal_error_event(client, monke
     assert "nothing was written" in final["detail"]
 
 
-def test_walking_away_from_a_preview_stops_the_searches(run_async, scale_sources):
+# ── walking away: proven against the shape the real server actually takes ─────────────────
+#
+# THE DEFECT THIS SECTION EXISTS BECAUSE OF (T-15 round 2, F1).
+# The first version of this test closed the stream with `await events.aclose()` and passed
+# against code that could not survive a real disconnect. `aclose()` throws into the generator
+# frame, so the generator's `finally` runs — and the generator's `finally` was the fix. The
+# test and the fix agreed with each other about a path production does not take.
+#
+# Starlette cancels `stream_response` when the client goes (`StreamingResponse.__call__` races
+# it against `listen_for_disconnect` in an anyio task group). WHERE that cancellation lands is
+# the whole question:
+#
+#   in-anext   cancelled while awaiting the generator  -> thrown in, `finally` runs
+#   in-send    cancelled while awaiting `send(chunk)`   -> generator left suspended at its
+#                                                          yield, `finally` NEVER runs
+#
+# in-send is the one production hits, because uvicorn awaits `flow.drain()` whenever the write
+# buffer is paused — the state a thousand-row preview with a closing client is in. So both
+# shapes are driven here, through the REAL `StreamingResponse.__call__`, over the REAL ASGI
+# three-tuple, against the object the real endpoint returns. Nothing calls `aclose()`.
+
+#: Leave after the start line and a couple of progress lines — far enough in that plenty of
+#: rows are still unresolved, early enough that the run is nowhere near finished.
+CHUNKS_BEFORE_LEAVING = 3
+
+
+async def _client_leaves(response, *, inside_send: bool) -> None:
+    """Drive a real ASGI response with a client that disconnects mid-stream.
+
+    `inside_send=True` is the production shape: `send` never returns, the way uvicorn's
+    `flow.drain()` does not return while the write buffer is paused, so the disconnect is
+    delivered to `stream_response` while it is suspended in `send` and the generator is left
+    parked at its `yield`.
+
+    `inside_send=False` is the other branch: `send` returns immediately, `stream_response`
+    goes back to the generator, and the cancellation is thrown into the generator frame.
+    """
+    left = asyncio.Event()
+    chunks = {"n": 0}
+
+    async def receive() -> dict:
+        await left.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict) -> None:
+        if message["type"] != "http.response.body" or not message.get("body"):
+            return
+        chunks["n"] += 1
+        if chunks["n"] < CHUNKS_BEFORE_LEAVING:
+            return
+        left.set()
+        if inside_send:
+            await asyncio.Event().wait()  # a write that will never complete
+
+    await response({"type": "http"}, receive, send)
+
+
+@pytest.mark.parametrize("inside_send", [False, True], ids=["in-anext", "in-send"])
+def test_walking_away_from_a_preview_stops_the_searches(run_async, scale_sources, inside_send):
     """The half of AC3's design that is a claim about quota, not about the UI.
 
-    Streaming was chosen over a polled job id partly because cancellation comes free: a closed
-    tab should stop spending TMDB/IGDB requests, not finish a thousand-row preview for nobody.
-    Free is not the same as true, so it is measured — close the stream after the first progress
-    event and check that the search count stops climbing.
+    Streaming was chosen over a polled job id partly because an abandoned preview should stop
+    spending TMDB/IGDB requests rather than finish a thousand-row run for nobody. That is not
+    free — see `backend/main.py::_PreviewRun` — so it is measured, on both cancellation shapes.
+
+    Before the fix this was red on `in-send` and green on `in-anext`: 600 rows, disconnect
+    after 40 searches, and 1072 more searches went out to the upstreams for a client that had
+    already gone.
     """
-    from backend import csvio
-    from backend.main import SEARCH_CONCURRENCY, _preview_events
+    import backend.main as main_module
+    from backend.main import SEARCH_CONCURRENCY
 
-    rows, problems = csvio.parse(generate_csv(ROWS))
-
-    async def walk_away() -> tuple[int, int]:
-        events = _preview_events(rows, problems, set())
-        async for line in events:
-            if json.loads(line).get("event") == "progress":
-                break  # the tab closed
-        await events.aclose()
+    async def walk_away() -> tuple[int, int, bool]:
+        response = await main_module.import_preview(payload={"text": generate_csv(600)})
+        await _client_leaves(response, inside_send=inside_send)
 
         at_close = scale_sources["tmdb"] + scale_sources["igdb"]
+        # `ag_frame` is None once a generator has finished or been closed. On the in-send
+        # shape it is still a frame, which is the point: the searches stopped WITHOUT the
+        # generator's `finally` ever running. Holding this reference is also what keeps the
+        # garbage collector from finalising it behind the test's back.
+        suspended = getattr(response.body_iterator, "ag_frame", None) is not None
         # Far longer than the whole preview takes when it is allowed to run.
         await asyncio.sleep(0.3)
-        return at_close, scale_sources["tmdb"] + scale_sources["igdb"]
+        return at_close, scale_sources["tmdb"] + scale_sources["igdb"], suspended
 
-    at_close, later = run_async(walk_away())
+    at_close, later, suspended = run_async(walk_away())
 
-    assert at_close < ROWS * 2, "the whole preview had already run before the stream closed"
+    assert at_close < 600 * 2, "the whole preview had already run before the client left"
     assert later - at_close <= SEARCH_CONCURRENCY, (
         f"{later - at_close} more searches went out after the client walked away — an "
-        "abandoned preview is still spending upstream quota."
+        "abandoned preview is still spending upstream quota. Cancellation is hanging off "
+        "something that only runs when the generator frame is resumed (T-15 F1)."
     )
+    if inside_send:
+        assert suspended, (
+            "the generator was finalised after all, so this run did not reproduce the "
+            "in-send shape and proves nothing about it — check `_client_leaves`."
+        )

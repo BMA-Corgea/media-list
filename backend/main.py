@@ -19,6 +19,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 
 from . import __version__
 from .artwork import cache as cache_art
@@ -413,7 +414,8 @@ async def _resolve_row(row: dict, existing: set, lookups: _Lookups) -> dict:
     return entry
 
 
-async def _resolve_rows(rows: list[dict], existing: set, note=None) -> list[dict]:
+async def _resolve_rows(rows: list[dict], existing: set, note=None,
+                        lookups: _Lookups | None = None) -> list[dict]:
     """Every row resolved, at most `SEARCH_CONCURRENCY` searches in flight.
 
     Entries come back in FILE ORDER — `asyncio.gather` preserves the order of what it was
@@ -423,8 +425,15 @@ async def _resolve_rows(rows: list[dict], existing: set, note=None) -> list[dict
 
     `note` is called once per row as it settles, so a caller can report progress without this
     function knowing anything about how that progress is delivered.
+
+    A caller may pass its OWN `_Lookups` when it needs to be able to stop the searches from
+    outside this function — `_PreviewRun` does, because a disconnected client has to be able
+    to cancel work without waiting for this frame to be resumed (see `_PreviewRun`). Whoever
+    creates the cache closes it; a caller-supplied one is not closed here.
     """
-    lookups = _Lookups()
+    own = lookups is None
+    if lookups is None:
+        lookups = _Lookups()
 
     async def one(row: dict) -> dict:
         try:
@@ -444,7 +453,8 @@ async def _resolve_rows(rows: list[dict], existing: set, note=None) -> list[dict
             task.cancel()
         raise
     finally:
-        lookups.close()
+        if own:
+            lookups.close()
 
 
 def _ndjson(event: dict) -> str:
@@ -456,7 +466,85 @@ def _ndjson(event: dict) -> str:
     return json.dumps(event) + "\n"
 
 
-async def _preview_events(rows: list[dict], problems: list[str], existing: set):
+class _PreviewRun:
+    """One preview's in-flight work, and the single call that stops all of it.
+
+    WHY THE CANCELLATION DOES NOT LIVE IN THE GENERATOR (T-15 round 2, F1).
+    The first cut cancelled the worker from `_preview_events`'s `finally`. An async
+    generator's `finally` only runs if the generator FRAME IS RESUMED — by `athrow`,
+    `aclose`, or a garbage collector at some unspecified later time. Starlette's
+    `StreamingResponse.__call__` races `stream_response` against `listen_for_disconnect` in
+    an anyio task group and cancels the whole scope when the client goes, so where that
+    cancellation lands decides whether the `finally` ever runs at all:
+
+      * inside `await body_iterator.__anext__()` — the error is thrown INTO the generator,
+        its `finally` runs, everything stops. This is also exactly what an explicit
+        `aclose()` does, which is why a test that closes the stream by hand always passed;
+      * inside `await send(chunk)` — the generator is left SUSPENDED AT ITS YIELD and never
+        resumed. The worker and its hundreds of child searches run to completion for a client
+        that has already gone.
+
+    The second branch is the LIKELY one in production: uvicorn awaits `flow.drain()` whenever
+    the write buffer is paused, which is the state a thousand-row preview with a closing
+    client is in. Measured on 600 rows: the in-anext shape stopped at 232 searches; the
+    in-send shape let the remaining ~380 run to completion, three times out of four.
+
+    So cancellation hangs off `StreamingResponse(background=...)` instead. `__call__` awaits
+    `self.background()` AFTER the task group unwinds, and an anyio cancel scope absorbs its
+    own cancellation — so that line is reached on the disconnect path exactly as it is on the
+    success path, wherever the cancellation happened to land, with no dependence on the
+    generator being resumed. `tests/test_import_scale.py` drives both shapes through the real
+    ASGI interface and asserts the searches stop while the generator is still suspended.
+    """
+
+    def __init__(self, rows: list[dict], problems: list[str], existing: set) -> None:
+        self.rows = rows
+        self.problems = problems
+        self.existing = existing
+        self.total = len(rows)
+        self.settled = 0
+        self.outcome: dict = {}
+        self.ticks: asyncio.Queue = asyncio.Queue()
+        # Owned HERE, not by `_resolve_rows`, so `cancel()` can reach the searches without
+        # the worker frame having to be resumed first.
+        self.lookups = _Lookups()
+        self.worker = asyncio.create_task(self._run())
+
+    def _note(self) -> None:
+        self.settled += 1
+        self.ticks.put_nowait(1)
+
+    async def _run(self) -> None:
+        try:
+            self.outcome["resolved"] = await _resolve_rows(
+                self.rows, self.existing, self._note, self.lookups
+            )
+        except Exception as error:  # noqa: BLE001 — re-reported as a terminal event, see below
+            self.outcome["error"] = error
+            logger.exception(
+                "import preview failed after %d of %d rows", self.settled, self.total
+            )
+        finally:
+            # The sentinel goes out whatever happened, including cancellation, so the event
+            # loop can never be left waiting on a worker that has stopped.
+            self.ticks.put_nowait(None)
+
+    async def cancel(self) -> None:
+        """Stop everything this preview started. Idempotent, and runs on EVERY exit path.
+
+        Async on purpose: `BackgroundTask` sends a SYNC callable to a worker thread, and
+        `Task.cancel()` is not safe to call from off the event loop.
+
+        Both halves are needed. Cancelling the worker eventually reaches `_resolve_rows`'s own
+        `finally`, but only once that frame is resumed; closing the lookups here stops the
+        searches in this tick instead. On the success path both are already done and this is
+        a no-op that only drains unretrieved exceptions.
+        """
+        self.worker.cancel()
+        self.lookups.close()
+
+
+async def _preview_events(run: _PreviewRun):
     """The preview as a stream of events, the last of which is the whole answer (T-15 AC3).
 
     WHY A STREAM AND NOT A JOB ID.
@@ -465,9 +553,10 @@ async def _preview_events(rows: list[dict], problems: list[str], existing: set):
     preview stays responsive" is an API change, not a tuning problem. The two candidates were
     chunked streaming and a job id the client polls. Streaming wins HERE, in a single-user
     app on loopback, because it needs no server-side job registry: nothing to garbage-collect,
-    nothing stranded by a restart, no second endpoint, and no question of who owns a job. It
-    also gets cancellation for free — closing the stream cancels the searches, so an abandoned
-    preview stops spending upstream quota instead of running to completion for nobody.
+    nothing stranded by a restart, no second endpoint, and no question of who owns a job. An
+    abandoned preview stops spending upstream quota rather than running to completion for
+    nobody — but see `_PreviewRun`: that part is NOT free, and getting it for free was the
+    bug.
 
     WHAT IT COSTS. Once the first byte is out the status code is already 200, so a failure
     part-way cannot be an HTTP status any more. It becomes a terminal `error` event, and
@@ -477,51 +566,32 @@ async def _preview_events(rows: list[dict], problems: list[str], existing: set):
     The final line is the complete result in the same shape this endpoint returned before.
     Everything ahead of it is progress a client is free to ignore.
     """
-    total = len(rows)
-    yield _ndjson({"event": "start", "total": total, "problems": problems})
+    yield _ndjson({"event": "start", "total": run.total, "problems": run.problems})
 
-    ticks: asyncio.Queue = asyncio.Queue()
-    settled = {"rows": 0}
-    outcome: dict = {}
-
-    def note() -> None:
-        settled["rows"] += 1
-        ticks.put_nowait(1)
-
-    async def run() -> None:
-        try:
-            outcome["resolved"] = await _resolve_rows(rows, existing, note)
-        except Exception as error:  # noqa: BLE001 — re-reported as a terminal event, see above
-            outcome["error"] = error
-            logger.exception("import preview failed after %d of %d rows", settled["rows"], total)
-        finally:
-            # The sentinel goes out whatever happened, including cancellation, so the loop
-            # below can never be left waiting on a worker that has stopped.
-            ticks.put_nowait(None)
-
-    worker = asyncio.create_task(run())
     try:
-        while total:
-            tick = await ticks.get()
+        while run.total:
+            tick = await run.ticks.get()
             while tick is not None:  # coalesce a burst of ticks into one line
                 try:
-                    tick = ticks.get_nowait()
+                    tick = run.ticks.get_nowait()
                 except asyncio.QueueEmpty:
                     break
-            yield _ndjson({"event": "progress", "resolved": settled["rows"], "total": total})
+            yield _ndjson({"event": "progress", "resolved": run.settled, "total": run.total})
             if tick is None:
                 break
-        await worker
+        await run.worker
     finally:
-        if not worker.done():
-            worker.cancel()
+        # Defence in depth, NOT the guarantee — this line runs only when the generator frame
+        # is resumed, which is the whole of F1. `_PreviewRun.cancel` is the guarantee.
+        if not run.worker.done():
+            run.worker.cancel()
 
-    if "error" in outcome:
+    if "error" in run.outcome:
         yield _ndjson({"event": "error",
                        "detail": "the preview failed part-way — nothing was written"})
         return
 
-    resolved = outcome["resolved"]
+    resolved = run.outcome["resolved"]
     counts: dict = {}
     for entry in resolved:
         counts[entry["state"]] = counts.get(entry["state"], 0) + 1
@@ -529,8 +599,8 @@ async def _preview_events(rows: list[dict], problems: list[str], existing: set):
     # candidate may itself already be on the list. Without the key set it would count that
     # row as importable and then promise a number the commit cannot deliver.
     yield _ndjson({
-        "event": "result", "rows": resolved, "problems": problems, "counts": counts,
-        "existing": [f"{source}:{source_id}" for source, source_id in sorted(existing)],
+        "event": "result", "rows": resolved, "problems": run.problems, "counts": counts,
+        "existing": [f"{source}:{source_id}" for source, source_id in sorted(run.existing)],
     })
 
 
@@ -542,6 +612,11 @@ async def import_preview(payload: dict = Body(...)) -> StreamingResponse:
     you confirm" a structural fact rather than a promise in a docstring.
 
     Answers as an NDJSON stream — `_preview_events` says why, and why not a job id.
+
+    The run is created HERE rather than inside the generator so the response can be handed a
+    `BackgroundTask` that stops it. Starlette awaits that task after the stream ends *however*
+    it ended, including a client that disconnected mid-write — which is the one exit an async
+    generator's own `finally` does not cover. `_PreviewRun` has the long version.
     """
     rows, problems = csvio.parse(payload.get("text") or "")
     # Read before the stream opens, so a database failure is still a real HTTP status.
@@ -549,8 +624,11 @@ async def import_preview(payload: dict = Body(...)) -> StreamingResponse:
     if rows:
         existing = {(r["source"], r["source_id"])
                     for r in query("SELECT source, source_id FROM titles")}
+    run = _PreviewRun(rows, problems, existing)
     return StreamingResponse(
-        _preview_events(rows, problems, existing), media_type="application/x-ndjson"
+        _preview_events(run),
+        media_type="application/x-ndjson",
+        background=BackgroundTask(run.cancel),
     )
 @api.post("/import/commit")
 async def import_commit(payload: dict = Body(...)) -> JSONResponse:
