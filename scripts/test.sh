@@ -116,7 +116,11 @@ if [ "$BROWSERS" -eq 1 ]; then
   if [ "$PLAYWRIGHT_STATUS" -ne 0 ]; then
     echo "media-list: browser suite failed (exit ${PLAYWRIGHT_STATUS})" >&2
   else
-    echo "media-list: all three engines passed, ${OWNER_DB} untouched"
+    # Say what actually RAN, never a fixed number of engines. AC2 was amended to Chromium
+    # + Firefox (WebKit cannot launch on Ubuntu 24.04 — see .autodev/specs/T-14.md), and a
+    # message that claims three when two ran is the same class of lie as a test that
+    # cannot fail. Playwright already prints the per-project results above this line.
+    echo "media-list: browser suite passed, ${OWNER_DB} untouched"
   fi
   exit "$PLAYWRIGHT_STATUS"
 fi
