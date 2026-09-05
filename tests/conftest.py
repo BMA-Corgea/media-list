@@ -38,6 +38,46 @@ os.environ.setdefault("PEXELS_API_KEY", "test-pexels-key")
 os.environ.setdefault("MEDIA_LIST_HOST", "127.0.0.1")
 os.environ.setdefault("MEDIA_LIST_PORT", "0")
 
+# ── AC3 / AC4: the frontend must exist BEFORE backend.main is imported ──────────────────
+# `create_app()` (called at `backend.main` import, same as bootstrap() above) only mounts
+# the SPA catch-all route `if dist.is_dir()`. That check runs exactly once, at import — a
+# frontend built AFTER this file's `from backend.main import app` below would be too late
+# for the same reason a tmp MEDIA_LIST_DB set too late would be: the decision already got
+# made. So the traversal-containment test (AC3) and the bundle-content test (AC4) both need
+# `frontend/dist` to exist before the marker a few lines down.
+#
+# Mirrors `start.sh`'s own "build once if missing" logic exactly, so a first-time
+# `scripts/test.sh` run behaves like a first-time `./start.sh` run. If npm is unavailable or
+# the build fails, dependent tests skip with this reason rather than the whole suite dying —
+# the ~50 tests that do not touch the frontend are still worth running.
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_FRONTEND_DIR = _REPO_ROOT / "frontend"
+_FRONTEND_DIST = _FRONTEND_DIR / "dist"
+FRONTEND_UNAVAILABLE_REASON: str | None = None
+
+if not _FRONTEND_DIST.is_dir():
+    if shutil.which("npm") is None:
+        FRONTEND_UNAVAILABLE_REASON = "npm not found on PATH — cannot build frontend/dist"
+    else:
+        try:
+            subprocess.run(
+                ["npm", "install", "--silent"], cwd=_FRONTEND_DIR,
+                check=True, capture_output=True, text=True, timeout=300,
+            )
+            subprocess.run(
+                ["npm", "run", "build", "--silent"], cwd=_FRONTEND_DIR,
+                check=True, capture_output=True, text=True, timeout=300,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            detail = getattr(error, "stderr", "") or str(error)
+            FRONTEND_UNAVAILABLE_REASON = f"frontend build failed: {detail[-500:]}"
+
+if not _FRONTEND_DIST.is_dir() and FRONTEND_UNAVAILABLE_REASON is None:
+    FRONTEND_UNAVAILABLE_REASON = "frontend/dist missing for an unknown reason"
+
 # ── everything below this line may import backend ───────────────────────────────────────
 import asyncio  # noqa: E402
 from typing import Callable  # noqa: E402
@@ -140,6 +180,25 @@ def client() -> TestClient:
 def run_async() -> Callable:
     """Drive a coroutine from a sync test without pytest-asyncio (not a dependency here)."""
     return asyncio.run
+
+
+@pytest.fixture(scope="session")
+def frontend_dist() -> Path:
+    """The built frontend, guaranteed to exist by this point — skip instead of failing.
+
+    Building already happened at the top of this file (before `backend.main` was ever
+    imported, which is the only time that matters). This fixture is just the skip gate for
+    the tests that need it: `pytest.skip(...)` here, not an assert, because "no npm on this
+    machine" is a missing tool, not a defect in the app.
+    """
+    if FRONTEND_UNAVAILABLE_REASON:
+        pytest.skip(FRONTEND_UNAVAILABLE_REASON)
+    return _FRONTEND_DIST
+
+
+@pytest.fixture
+def repo_root() -> Path:
+    return _REPO_ROOT
 
 
 def insert_title(**overrides) -> int:
