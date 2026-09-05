@@ -10,13 +10,14 @@ It authenticates through Twitch rather than with a plain key, which is the only 
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
 from pathlib import Path
 
 from ..config import config
-from .base import SourceError, client, raise_for
+from .base import IGDB_LIMIT, SourceError, client, raise_for
 
 TOKEN_URL = "https://id.twitch.tv/oauth2/token"
 BASE = "https://api.igdb.com/v4"
@@ -49,50 +50,99 @@ def _write_cached_token(token: str, expires_in: int) -> None:
     os.chmod(TOKEN_CACHE, 0o600)
 
 
+#: ONE exchange in flight at a time, per event loop (T-15 round 2, F4).
+#:
+#: The cache below was enough while imports resolved SEQUENTIALLY — only one row could be
+#: inside `token()` at a time, so only one exchange could ever be in flight and every row
+#: after the first found a warm cache. T-15 made the fetch phase concurrent and broke that:
+#: `SEARCH_CONCURRENCY` rows now start together, all miss the same cold cache, and all POST
+#: to Twitch. Measured: 8 exchanges in 3.75s where 1 is correct — and each one takes an
+#: `IGDB_LIMIT` slot, so a cold import spends its opening seconds of IGDB budget on seven
+#: authentications nobody asked for, exactly while the first eight rows want to search.
+#:
+#: Rebuilt on a loop change for the same reason `base.RateLimit._bind` is: an `asyncio.Lock`
+#: binds to the first loop that touches it and raises on any other, and this module lives for
+#: the process while the app (and every `TestClient` in the suite) gets a fresh loop.
+_exchange_loop: asyncio.AbstractEventLoop | None = None
+_exchange_lock: asyncio.Lock | None = None
+
+
+def _exchange_gate() -> asyncio.Lock:
+    global _exchange_loop, _exchange_lock
+    loop = asyncio.get_running_loop()
+    if _exchange_loop is not loop or _exchange_lock is None:
+        _exchange_loop = loop
+        _exchange_lock = asyncio.Lock()
+    return _exchange_lock
+
+
 async def token(force: bool = False) -> str:
     """A bearer token, fetched once and reused until it expires.
 
     Twitch tokens last ~60 days. Exchanging on every request would be both slow and a good
     way to get rate limited for no reason.
+
+    The cache is read OUTSIDE the lock first, so the warm path — which is every call after
+    the first, for two months — stays a file read with no contention. Only a miss queues, and
+    only the first waiter through pays for the exchange.
     """
     if not available():
         raise SourceError("igdb", "no IGDB_CLIENT_ID / IGDB_CLIENT_SECRET in .env")
+
+    # `force=True` means the caller just watched THIS token get rejected (a 401 in `_query`).
+    # Remember which one it was: if a concurrent waiter has already replaced it by the time we
+    # hold the lock, that new token is the answer and a second exchange would be as redundant
+    # as the eight this lock exists to prevent.
+    stale = _read_cached_token() if force else None
     if not force:
         cached = _read_cached_token()
         if cached:
             return cached
 
-    async with client() as http:
-        response = await http.post(
-            TOKEN_URL,
-            params={
-                "client_id": config.igdb_client_id,
-                "client_secret": config.igdb_client_secret,
-                "grant_type": "client_credentials",
-            },
-        )
-        raise_for("igdb", response)
-        payload = response.json()
+    async with _exchange_gate():
+        # Re-read under the lock: the seven rows queued behind the first one are here to
+        # collect the token it just wrote, not to ask Twitch again.
+        cached = _read_cached_token()
+        if cached is not None and cached != stale:
+            return cached
 
-    access = payload.get("access_token")
-    if not access:
-        raise SourceError("igdb", "Twitch returned no access_token")
-    _write_cached_token(access, int(payload.get("expires_in", 3600)))
-    return access
+        async with client() as http:
+            async with IGDB_LIMIT.slot():
+                response = await http.post(
+                    TOKEN_URL,
+                    params={
+                        "client_id": config.igdb_client_id,
+                        "client_secret": config.igdb_client_secret,
+                        "grant_type": "client_credentials",
+                    },
+                )
+            raise_for("igdb", response)
+            payload = response.json()
+
+        access = payload.get("access_token")
+        if not access:
+            raise SourceError("igdb", "Twitch returned no access_token")
+        _write_cached_token(access, int(payload.get("expires_in", 3600)))
+        return access
 
 
 async def _query(body: str, *, retry: bool = True) -> list[dict]:
     """POST an apicalypse query. A 401 means the cached token died; refresh once and retry."""
+    # `token()` may itself go to Twitch, and it must do so BEFORE the slot is taken: an
+    # unrelated outbound call made while holding an open-request slot would have the limiter
+    # counting one request and two leaving.
+    bearer = await token()
     async with client() as http:
-        response = await http.post(
-            f"{BASE}/games",
-            content=body,
-            headers={
-                "Client-ID": config.igdb_client_id or "",
-                "Authorization": f"Bearer {await token()}",
-                "Accept": "application/json",
-            },
-        )
+        async with IGDB_LIMIT.slot():
+            response = await http.post(
+                f"{BASE}/games",
+                content=body,
+                headers={
+                    "Client-ID": config.igdb_client_id or "",
+                    "Authorization": f"Bearer {bearer}",
+                    "Accept": "application/json",
+                },
+            )
         if response.status_code == 401 and retry:
             await token(force=True)
             return await _query(body, retry=False)

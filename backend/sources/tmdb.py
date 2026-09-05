@@ -8,7 +8,7 @@ in this app exist at all.
 from __future__ import annotations
 
 from ..config import config
-from .base import SourceError, client, raise_for
+from .base import TMDB_LIMIT, SourceError, client, raise_for
 
 BASE = "https://api.themoviedb.org/3"
 IMG = "https://image.tmdb.org/t/p"
@@ -71,10 +71,11 @@ async def search(query: str) -> list[dict]:
     if not available():
         raise SourceError("tmdb", "no TMDB_API_KEY in .env")
     async with client() as http:
-        response = await http.get(
-            f"{BASE}/search/multi",
-            params={"api_key": config.tmdb_api_key, "query": query, "include_adult": "false"},
-        )
+        async with TMDB_LIMIT.slot():
+            response = await http.get(
+                f"{BASE}/search/multi",
+                params={"api_key": config.tmdb_api_key, "query": query, "include_adult": "false"},
+            )
         raise_for("tmdb", response)
         results = response.json().get("results", [])
     return [n for n in (_normalise(r) for r in results) if n]
@@ -100,10 +101,11 @@ async def details(source_id: str, media_type: str | None = None) -> dict:
 
     async with client() as http:
         for kind in [media_type]:
-            response = await http.get(
-                f"{BASE}/{kind}/{source_id}",
-                params={"api_key": config.tmdb_api_key, "append_to_response": "external_ids"},
-            )
+            async with TMDB_LIMIT.slot():
+                response = await http.get(
+                    f"{BASE}/{kind}/{source_id}",
+                    params={"api_key": config.tmdb_api_key, "append_to_response": "external_ids"},
+                )
             if response.status_code == 404:
                 continue
             raise_for("tmdb", response)

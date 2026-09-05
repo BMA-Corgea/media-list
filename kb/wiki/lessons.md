@@ -9,6 +9,165 @@ type: reference
 Durable lessons land here as the project runs — one entry per lesson, newest first, each
 citing the ticket/incident it came from.
 
+## TWICE NOW: a test that proves a path the real system does not take (T-13, T-15)
+
+Read this one before writing the next test in this repo. It is not a fact about asyncio or
+about httpx; it is the failure mode this project keeps producing, and it has cost two
+loopbacks on two consecutive tickets.
+
+| ticket | the test | the path it exercised | the path production takes |
+| --- | --- | --- | --- |
+| T-13 F1 | path traversal | httpx normalised `/../../.env` to `/.env` before it left the client | uvicorn passes `../../.env` through intact |
+| T-15 F1 | abandoned preview | `await events.aclose()` throws into the generator, so its `finally` runs | Starlette cancels mid-`send`, the generator is never resumed, and its `finally` never runs |
+
+Both tests passed. Both fixes were wrong. In both cases the test and the bug agreed with each
+other about how the system behaves, so the test could not possibly catch it — the guard and
+its proof shared one false assumption, which is the only way a green suite hides a live
+defect.
+
+**The tell is the same in both:** the test reached the behaviour under test through a
+convenience the real caller does not have. `aclose()` and `client.get()` are both "the easy
+way to make that happen", and easy was exactly the problem — the real caller is a socket
+closing, or a byte string arriving off the wire, and neither is polite.
+
+So, when a test covers what happens on an ABNORMAL path — a disconnect, a cancellation, a
+timeout, a malformed request, a crash — write down the mechanism by which the real system
+gets there, in one sentence, before writing the test. Then check the test uses that
+mechanism and not a stand-in for it. If it uses a stand-in, say so in the test, and find a
+second case that does not.
+
+## An async generator's `finally` is not a cleanup guarantee (T-15)
+
+The concrete case behind the entry above. `/api/import/preview` cancelled its resolver from
+the streaming generator's `finally`:
+
+```python
+    worker = asyncio.create_task(run())
+    try:
+        ...
+        yield _ndjson(progress)      # <- the client leaves while we are parked HERE
+    finally:
+        worker.cancel()              # <- and this never runs
+```
+
+An async generator's `finally` runs only when the FRAME IS RESUMED — by `athrow`, by
+`aclose`, or by a garbage collector at some unspecified later time. Starlette's
+`StreamingResponse.__call__` races `stream_response` against `listen_for_disconnect` in an
+anyio task group and cancels the scope when the client goes, and where that cancellation
+lands decides everything:
+
+* inside `await body_iterator.__anext__()` — thrown into the generator, `finally` runs;
+* inside `await send(chunk)` — the generator stays suspended at its `yield`, untouched.
+
+The second is the branch production takes, because uvicorn awaits `flow.drain()` whenever the
+write buffer is paused, which is exactly the state a large streamed response with a departing
+client is in. Measured, 600 rows, disconnect after 40 searches: the in-anext shape stopped
+dead; the in-send shape sent **1072 more searches** to TMDB and IGDB on behalf of a client
+that had already gone.
+
+**Hang cleanup off something with a defined moment, not off a frame that may never resume.**
+For a `StreamingResponse` that is `background=BackgroundTask(...)`: `__call__` awaits it after
+the task group unwinds, and an anyio cancel scope absorbs its own cancellation, so the line is
+reached on the disconnect path exactly as on the success path — whatever the generator is
+doing. `backend/main.py::_PreviewRun` is the shape.
+
+Two things that make the new test able to fail: it drives the real
+`StreamingResponse.__call__` over the real ASGI three-tuple with a `send` that never returns
+(a paused write buffer, in one line), and it asserts that the searches stopped *while
+`body_iterator.ag_frame` was still a frame* — i.e. the guarantee cannot be coming from
+generator finalisation. And note `httpx.MockTransport` is no good for building that kind of
+test: it calls a SYNC handler, so a whole request can complete without yielding to the loop
+and nothing ever interleaves. `tests/factories.py::UpstreamTransport` has a real `await` in
+it for that reason.
+
+## "Nothing was added" is not proof that a rollback happened (T-15)
+
+T-15 had to prove T-10's atomicity guarantee still holds with a concurrent fetch phase in
+front of the insert loop: force a failure mid-commit inside a 500-row batch, show the row
+count unchanged. The obvious test does exactly that and can pass for entirely the wrong
+reason. `import_commit` resolves every record BEFORE it opens a transaction, and a failure
+in that phase is recorded in `failures` and skipped — so if the sabotage lands in the fetch
+rather than in an `INSERT`, the endpoint returns a perfectly correct answer, nothing is
+added, the row count is unchanged, and **the transaction was never exercised at all**. The
+test is green and the rollback is untested.
+
+So the assertion has to be about what the transaction DID before it died, not only about
+what survived. `tests/test_import_atomicity.py` counts the INSERTs that actually executed
+and requires 251 of them — rows 0–249 succeeded, row 250 raised — because that number is the
+only thing separating "one transaction that rolled back" from "the failure happened before
+any writing started". Watch it fail, too: with the single `with connection()` replaced by a
+connection per row, the same test reports `assert 252 == 2`, i.e. 250 rows survived.
+
+The general form: **when a test proves an absence, prove the presence of the thing that was
+supposed to make the absence hard.** An absence has too many causes.
+
+## `TestClient` collects the whole response body before you can read a line of it (T-15)
+
+AC3 needed proof that `/api/import/preview` reports progress *while it is still resolving*.
+The obvious test streams the endpoint and timestamps each event:
+
+```python
+with client.stream("POST", "/api/import/preview", json={"text": csv}) as response:
+    for line in response.iter_lines():   # every line arrives at the same instant
+```
+
+Every timestamp came back within 1ms of every other, on a request that genuinely takes ~1.4
+seconds over a real socket. The server was streaming perfectly; the client is not.
+`starlette.testclient._TestClientTransport.handle_request` writes each `http.response.body`
+message into an `io.BytesIO` and finishes with
+`raw_kwargs["stream"] = httpx.ByteStream(raw_kwargs["stream"].read())` — the response is
+fully materialised before httpx ever hands it back. `iter_lines()` is then iterating a
+buffer, and any timing assertion built on it is measuring that buffer.
+
+This is the same trap as the path-traversal lesson below, in a different costume: **the
+in-process test client is the one thing that cannot reproduce the property under test.** The
+fix is the same shape, too — test the layer that does the work. `_preview_events` is an async
+generator, so driving it directly and timestamping each `yield` measures exactly what a
+socket reader would see, with nothing in between. Confirmed separately against a real uvicorn
+on loopback: `transfer-encoding: chunked`, 246 progress events, first at 561ms, 50% at 971ms,
+result at 1357ms.
+
+Corollary for the other direction: **a latency stub that returns instantly cannot measure
+concurrency.** A sequential loop and an eight-way-concurrent one over zero-cost awaits
+produce the same wall clock, so the "after" number would have looked like a win with nothing
+changed. `tests/test_import_scale.py`'s stubs sleep 2ms for exactly this reason, and the
+sabotage run (`SEARCH_CONCURRENCY = 1`) is what proves the ceiling can still fail.
+
+## A concurrency cap is not a rate limit, and 429 here is silent (T-15)
+
+Two separate ceilings, and bounding one does nothing for the other. Eight requests in flight
+at 200ms each is **40 requests/second** — ten times IGDB's published limit of 4/s, even
+though "8 at once" is precisely IGDB's own open-request cap. `backend/sources/base.py`
+carries both numbers per source for that reason: `open_requests` is a semaphore,
+`per_second` is a departure clock, and a request has to satisfy both.
+
+What makes this correctness rather than manners in this codebase: `raise_for` turns HTTP 429
+into a `SourceError`, and the import resolver catches `SourceError` **per row** and marks
+that row `unmatched`. Crossing the limit therefore does not fail loudly — it quietly turns a
+thousand-row import into a thousand rows that "have no match", on the owner's real list, with
+nothing anywhere saying the upstream refused. Before adding concurrency to anything that
+talks to a rate-limited service, find out what that service does on refusal and what the
+caller does with the refusal; if the answer is "swallows it per item", the bound is load
+bearing.
+
+## `asyncio.Lock`/`Semaphore` bind to the first event loop that touches them (T-15)
+
+A module-scope `asyncio.Lock()` works in the first test and raises
+`... is bound to a different event loop` in the second, because each `TestClient` (and each
+`asyncio.run`) is a fresh loop while the singleton is not. The primitive latches its loop on
+first use and never lets go. So any long-lived limiter, pool or gate that lives at module
+scope has to rebuild its primitives when the running loop changes — `RateLimit._bind()` does
+exactly that, and resetting the pacing clock alongside them is correct rather than sloppy,
+since a new loop means none of our requests are in flight.
+
+Two smaller ones from the same ticket, worth knowing before losing an hour to either:
+`asyncio.gather` does **not** cancel its siblings when one child raises (only when the gather
+itself is cancelled), so an unexpected failure leaves the other hundreds of tasks running
+against the upstreams for a response nobody will read — cancel them explicitly. And
+`sqlite3.Connection` has no instance `__dict__`, so `conn.execute = wrapper` is an
+`AttributeError`, not a seam; `conn.set_trace_callback(fn)` is sqlite3's own hook and fires
+per statement, the failing one included.
+
 ## A path-traversal test written the obvious way tests nothing — the HTTP client eats the `..` (T-13)
 
 `client.get("/../../.env")` never delivers a `..` to the handler. `TestClient` is built on

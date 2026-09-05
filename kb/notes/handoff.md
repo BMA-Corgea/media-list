@@ -131,6 +131,17 @@ below exists because it found something.
 - **Pointer gestures:** capture the pressed element at `pointerdown` (`setPointerCapture`
   retargets later events), and ignore movement under a 6px threshold so a drag never fires a
   click.
+- **Concurrency belongs in a FETCH phase, never in a write loop.** `import_commit` resolves
+  every record first, outside any transaction, and only then opens one transaction on one
+  connection and writes sequentially. Two things depend on that loop staying sequential and
+  single-connection: the per-row duplicate `SELECT` reads that connection's own uncommitted
+  inserts, and `top += 10` walks queue positions forward in file order. `asyncio.gather`
+  preserving its input order is what lets the fetch phase be concurrent without disturbing
+  either (T-15).
+- **Every outbound call takes a rate-limit slot.** `backend/sources/base.py` holds one
+  `RateLimit` per upstream carrying that upstream's own published numbers — requests/second
+  AND open requests, because a concurrency cap is not a rate. A new source, or a new call site
+  in an existing one, gets a slot or it is not bounded at all (T-15 AC6).
 
 ---
 
@@ -157,8 +168,23 @@ below exists because it found something.
 4. **Second browser engine.** Firefox/WebKit have never run this. The carousel and the wheel
    are the risky surfaces (Pointer Events, 3D transforms, CSS transitions).
 
-5. **Large-CSV import.** Untested past ~7 rows. A chatbot list of thousands would make the
-   per-row search dominate the preview — likely needs batching or concurrency.
+5. **~~Large-CSV import~~ — done 2026-09-05 (T-15).** A 1000-row generated CSV now drives
+   the resolver in `tests/test_import_scale.py`, with a ceiling the suite enforces
+   (`CEILING_SECONDS`). 4.95s → 0.76s on 1000 distinct titles; a repeated list is 0.07s and
+   makes 95% fewer outbound requests. `/api/import/preview` streams NDJSON progress instead of
+   returning one blob at the end. The insert loop did not move, and atomicity is proven at 500
+   rows with the sabotage halfway through the batch.
+
+   **Read those numbers correctly — they are LOOP TIME, not wall clock.** They are measured
+   with the sources stubbed above the rate limiter, so they say how well this code overlaps
+   the time it is given and nothing about how long an import takes. Driven through
+   `RateLimit` against a mocked transport: **40 rows in 10.04s, IGDB pinned at exactly 4.00
+   requests/second — about 250 seconds for a 1000-row preview.** That is an upstream ceiling,
+   not a code defect, and it is what the owner will actually sit through. The one lever that
+   would move it is a design decision nobody has taken: `_search_all` asks IGDB about every
+   row whatever `kind` the row declares, and skipping IGDB for movies/anime/live-action would
+   be roughly 5× — at the cost of the "nothing of kind X matched — showing every kind"
+   fallback that currently rescues a mis-declared row. See `.autodev/handoffs/T-15.md`.
 
 6. **The owner's actual list.** They planned to generate one with ChatGPT using the prompt in
    `README.md`. When it arrives: paste into `#/transfer` → Preview → settle the ambiguous

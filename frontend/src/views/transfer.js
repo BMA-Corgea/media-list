@@ -61,16 +61,42 @@ export async function transferView() {
   });
   actions.append(preview, upload, file, Object.assign(document.createElement('span'), { className: 'grow' }), exportBtn);
 
+  // Progress line. Deliberately plain text in an existing class: a thousand-row preview
+  // needs a number that moves, and it needs it without a new component in the skins layer.
+  const progress = Object.assign(document.createElement('p'), { className: 'hint' });
+
+  // Aborting a running preview is what tells the server the screen is gone; the server then
+  // cancels the searches still in flight. `page.cleanup` below is the router's unmount hook
+  // (T-15 F2) — the other half of "walking away stops the searches", and useless without it.
+  let inflight = null;
+  page.cleanup = () => inflight?.abort();
+
   preview.addEventListener('click', async () => {
     preview.disabled = true;
     preview.textContent = 'Resolving…';
-    report.replaceChildren();
+    progress.textContent = 'Reading the file…';
+    report.replaceChildren(progress);
+    inflight = new AbortController();
     try {
-      const result = await api.importPreview(text.value);
+      // The preview streams: it says how many rows it has settled while it is still working
+      // on the rest, so the page stays honest about a long import instead of hanging on a
+      // spinner until the last row (T-15 AC3).
+      const result = await api.importPreview(text.value, (event) => {
+        if (event.event === 'start') {
+          progress.textContent = event.total
+            ? `Resolving ${event.total} row${event.total === 1 ? '' : 's'}…`
+            : 'Nothing to resolve.';
+        } else if (event.event === 'progress' && event.total) {
+          progress.textContent = `Resolved ${event.resolved} of ${event.total}…`;
+          preview.textContent = `Resolving… ${Math.round((event.resolved / event.total) * 100)}%`;
+        }
+      });
       renderReport(result);
     } catch (error) {
-      report.innerHTML = `<p class="hint bad">${error.message}</p>`;
+      // An abort is this screen being left, not a failure: there is nobody to tell.
+      if (error.name !== 'AbortError') report.innerHTML = `<p class="hint bad">${error.message}</p>`;
     } finally {
+      inflight = null;
       preview.disabled = false;
       preview.textContent = 'Preview import';
     }
@@ -108,6 +134,13 @@ export async function transferView() {
       if (entry.row.year) head.append(Object.assign(document.createElement('span'), { className: 'card__meta', textContent: entry.row.year }));
       item.append(head);
 
+      // WHY THE ROW SAYS WHICH KIND OF NOTHING IT FOUND (T-15 AC6 / F3).
+      // `backend/main.py` records the upstream's own message on `entry.error` when a source
+      // failed for this row. Without rendering it, "rate limited — try again shortly" and
+      // "genuinely not on TMDB" are the same pixels — both just `no match found` — so the
+      // owner hand-searches titles that were never missing instead of re-running the import.
+      // That cascade is the exact reason the outbound ceiling exists (`sources/base.py`).
+      if (entry.error) item.append(Object.assign(document.createElement('p'), { className: 'hint bad', textContent: entry.error }));
       if (entry.note) item.append(Object.assign(document.createElement('p'), { className: 'hint', textContent: entry.note }));
 
       if (entry.candidates?.length) {

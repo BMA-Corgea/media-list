@@ -8,11 +8,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sqlite3
 
 from fastapi import APIRouter, Body, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 
 from . import __version__
 from .artwork import cache as cache_art
@@ -22,6 +29,8 @@ from .db import bootstrap, connection, execute, query
 from .sources import anilist, igdb, tmdb
 from .titles import now, serialise
 from .sources.base import SourceError
+
+logger = logging.getLogger(__name__)
 
 api = APIRouter(prefix="/api")
 
@@ -270,92 +279,376 @@ def export_csv() -> PlainTextResponse:
     )
 
 
-@api.post("/import/preview")
-async def import_preview(payload: dict = Body(...)) -> JSONResponse:
-    """Resolve a CSV against the sources and report what WOULD happen. Writes nothing.
+#: How many rows resolve their sources at once during an import (T-15 AC6).
+#:
+#: This is also the number of outbound requests this app will have in flight at once, because
+#: a row's sources are consulted one after another (see `_search_all`). It is set from IGDB's
+#: published maximum of 8 OPEN REQUESTS — the strictest ceiling any row can hit — so no
+#: upstream ever sees more connections open than it says it will hold. How FAST those requests
+#: leave is a separate ceiling, bounded per source in `backend/sources/base.py::RateLimit`,
+#: because a concurrency cap is not a rate.
+#:
+#: It applies ONLY to the two FETCH phases — resolving a preview, and `import_commit`'s
+#: prepare-everything-first loop — both of which run outside any transaction. It must never
+#: reach the insert loop; that loop's own comment says what depends on it staying sequential.
+SEARCH_CONCURRENCY = 8
 
-    Preview and commit are separate endpoints on purpose: it makes "nothing is written until
-    you confirm" a structural fact rather than a promise in a docstring.
+
+async def _search_all(title: str) -> list[dict]:
+    """Every configured source's candidates for one title, in source order.
+
+    Sequential WITHIN a title on purpose. Today a TMDB failure means IGDB is never consulted
+    and the row comes back `unmatched`; T-15 is a performance ticket and is not the place to
+    change what a row means. The parallelism goes ACROSS titles, which is where the 2000
+    strictly-sequential round trips of a 1000-row list actually were.
     """
-    rows, problems = csvio.parse(payload.get("text") or "")
-    if not rows:
-        return JSONResponse({"rows": [], "problems": problems, "counts": {}})
+    found: list[dict] = []
+    if tmdb.available():
+        found += await tmdb.search(title)
+    if igdb.available():
+        found += await igdb.search(title)
+    return found
 
-    existing = {(r["source"], r["source_id"]) for r in query("SELECT source, source_id FROM titles")}
-    resolved = []
 
-    for row in rows:
-        entry = {"row": row, "state": None, "chosen": None, "candidates": []}
+class _Lookups:
+    """One search per distinct title, per run — the import's cache and its throttle (AC5).
 
-        if row["tmdb_id"] or row["igdb_id"]:
-            # An id from a previous export: trust it and skip the search entirely. This is
-            # what makes an export round-trip exactly rather than approximately.
-            source = "tmdb" if row["tmdb_id"] else "igdb"
-            source_id = row["tmdb_id"] or row["igdb_id"]
-            # TMDB ids are namespace-scoped (T-3): a stored kind tells us which one.
-            media_type = None
-            if source == "tmdb":
-                media_type = "tv" if row["kind"] in ("anime", "live-action") else "movie"
-            entry["chosen"] = {"source": source, "source_id": source_id, "media_type": media_type,
-                               "title": row["title"], "year": row["year"], "kind": row["kind"]}
-            entry["state"] = "duplicate" if (source, source_id) in existing else "matched"
-            resolved.append(entry)
-            continue
+    There was no cache at all before T-15: two rows naming the same title paid for the same
+    two round trips twice, and a chatbot list of a franchise ("Gundam", "Gundam Wing",
+    "Gundam SEED") makes that the common case rather than the corner case.
 
-        try:
-            found = []
-            if tmdb.available():
-                found += await tmdb.search(row["title"])
-            if igdb.available():
-                found += await igdb.search(row["title"])
-        except SourceError as error:
-            entry["state"] = "unmatched"
-            entry["error"] = error.detail
-            resolved.append(entry)
-            continue
+    Keyed on the TITLE ALONE, because the title is the entire input to the search call —
+    `year` and `kind` are applied afterwards, per row, when ranking what came back. So this
+    subsumes AC5's "identical title+year" and additionally collapses two rows that disagree
+    about the year, which is the same search either way.
 
-        # A DECLARED KIND IS A FILTER, NOT A PREFERENCE.
-        # There is a 1998 Cowboy Bebop VIDEO GAME as well as the 1998 anime — same title,
-        # same year. Scoring alone put them 28 points apart, close enough that a small weight
-        # change either way would have silently imported the game as the anime. If the row
-        # says what it is, candidates of another kind are not answers to it.
-        pool = found
-        if row["kind"]:
-            same_kind = [c for c in found if c.get("kind") == row["kind"]]
-            if same_kind:
-                pool = same_kind
-            else:
-                entry["note"] = f"nothing of kind {row['kind']!r} matched — showing every kind"
+    What is stored is the in-flight TASK, not its result, so two rows starting together share
+    one round trip instead of racing to fill the cache twice. A task that FAILED stays in the
+    map on purpose: a run that could not resolve one title must not turn around and ask 999
+    more times — that is exactly the 429 cascade the outbound ceiling exists to prevent.
+    """
 
-        ranked = sorted(pool, key=lambda c: csvio.score(c, row), reverse=True)[:6]
-        if not ranked:
-            entry["state"] = "unmatched"
+    def __init__(self, concurrency: int = SEARCH_CONCURRENCY) -> None:
+        self.gate = asyncio.Semaphore(concurrency)
+        self.tasks: dict[str, asyncio.Task] = {}
+
+    async def _search(self, title: str) -> list[dict]:
+        async with self.gate:
+            return await _search_all(title)
+
+    async def get(self, title: str) -> list[dict]:
+        # SHARED-TASK CANCELLATION TRAP (T-15 round 2, F6 — latent, not live).
+        # Every row that wants this title awaits the SAME task. `asyncio` propagates a
+        # cancellation from any one waiter INTO the task, which then fails every OTHER waiter
+        # with CancelledError — one row's problem becomes fifty rows' problem.
+        # Harmless today because every cancellation path here is wholesale: the whole preview
+        # is abandoned at once (`_PreviewRun.cancel`) and there is nobody left to be collateral
+        # damage. It stops being harmless the moment anything cancels ONE row — a per-row
+        # timeout, a partial retry, a "skip this title" button. The guard for that day is
+        # `await asyncio.shield(task)`, so a waiter walking away leaves the task running for
+        # the rest. Deliberately NOT added now: shielding cannot be tested without the
+        # per-row cancellation that does not exist yet, and untested cancellation code is
+        # worse than a named trap.
+        key = " ".join(title.split()).casefold()
+        task = self.tasks.get(key)
+        if task is None:
+            task = self.tasks[key] = asyncio.create_task(self._search(title))
+        return await task
+
+    def close(self) -> None:
+        """Stop anything still running, and read every failure that nobody read.
+
+        A client that walked away must not leave the rest of a thousand searches burning
+        quota on a preview no one will ever see. The `exception()` call is not decoration:
+        an unretrieved task exception is logged by asyncio at garbage-collection time, which
+        would print a scary traceback for a request that was cancelled perfectly normally.
+        """
+        for task in self.tasks.values():
+            if not task.done():
+                task.cancel()
+            elif not task.cancelled():
+                task.exception()
+
+
+async def _resolve_row(row: dict, existing: set, lookups: _Lookups) -> dict:
+    """What WOULD happen to one CSV row. Writes nothing, decides nothing on its own."""
+    entry = {"row": row, "state": None, "chosen": None, "candidates": []}
+
+    if row["tmdb_id"] or row["igdb_id"]:
+        # An id from a previous export: trust it and skip the search entirely. This is
+        # what makes an export round-trip exactly rather than approximately.
+        source = "tmdb" if row["tmdb_id"] else "igdb"
+        source_id = row["tmdb_id"] or row["igdb_id"]
+        # TMDB ids are namespace-scoped (T-3): a stored kind tells us which one.
+        media_type = None
+        if source == "tmdb":
+            media_type = "tv" if row["kind"] in ("anime", "live-action") else "movie"
+        entry["chosen"] = {"source": source, "source_id": source_id, "media_type": media_type,
+                           "title": row["title"], "year": row["year"], "kind": row["kind"]}
+        entry["state"] = "duplicate" if (source, source_id) in existing else "matched"
+        return entry
+
+    try:
+        found = await lookups.get(row["title"])
+    except SourceError as error:
+        entry["state"] = "unmatched"
+        entry["error"] = error.detail
+        return entry
+
+    # A DECLARED KIND IS A FILTER, NOT A PREFERENCE.
+    # There is a 1998 Cowboy Bebop VIDEO GAME as well as the 1998 anime — same title,
+    # same year. Scoring alone put them 28 points apart, close enough that a small weight
+    # change either way would have silently imported the game as the anime. If the row
+    # says what it is, candidates of another kind are not answers to it.
+    pool = found
+    if row["kind"]:
+        same_kind = [c for c in found if c.get("kind") == row["kind"]]
+        if same_kind:
+            pool = same_kind
         else:
-            best, second = ranked[0], (ranked[1] if len(ranked) > 1 else None)
-            gap = csvio.score(best, row) - (csvio.score(second, row) if second else -999)
-            entry["candidates"] = ranked
-            # A clear winner is proposed; anything close is handed back for a human choice.
-            # Guessing between two plausible titles is exactly the silent failure this
-            # importer exists to avoid.
-            if gap >= 35 and csvio.score(best, row) >= 100:
-                entry["chosen"] = best
-                entry["state"] = "duplicate" if (best["source"], best["source_id"]) in existing else "matched"
-            else:
-                entry["state"] = "choose"
-        resolved.append(entry)
+            entry["note"] = f"nothing of kind {row['kind']!r} matched — showing every kind"
 
-    counts = {}
+    ranked = sorted(pool, key=lambda c: csvio.score(c, row), reverse=True)[:6]
+    if not ranked:
+        entry["state"] = "unmatched"
+    else:
+        best, second = ranked[0], (ranked[1] if len(ranked) > 1 else None)
+        gap = csvio.score(best, row) - (csvio.score(second, row) if second else -999)
+        entry["candidates"] = ranked
+        # A clear winner is proposed; anything close is handed back for a human choice.
+        # Guessing between two plausible titles is exactly the silent failure this
+        # importer exists to avoid.
+        if gap >= 35 and csvio.score(best, row) >= 100:
+            entry["chosen"] = best
+            entry["state"] = "duplicate" if (best["source"], best["source_id"]) in existing else "matched"
+        else:
+            entry["state"] = "choose"
+    return entry
+
+
+async def _resolve_rows(rows: list[dict], existing: set, note=None,
+                        lookups: _Lookups | None = None) -> list[dict]:
+    """Every row resolved, at most `SEARCH_CONCURRENCY` searches in flight.
+
+    Entries come back in FILE ORDER — `asyncio.gather` preserves the order of what it was
+    given, whatever order the searches actually finished in. That is what keeps "import order
+    becomes your initial queue order" (README) true once these entries reach `import_commit`'s
+    sequential insert loop and its `top += 10`.
+
+    `note` is called once per row as it settles, so a caller can report progress without this
+    function knowing anything about how that progress is delivered.
+
+    A caller may pass its OWN `_Lookups` when it needs to be able to stop the searches from
+    outside this function — `_PreviewRun` does, because a disconnected client has to be able
+    to cancel work without waiting for this frame to be resumed (see `_PreviewRun`). Whoever
+    creates the cache closes it; a caller-supplied one is not closed here.
+    """
+    own = lookups is None
+    if lookups is None:
+        lookups = _Lookups()
+
+    async def one(row: dict) -> dict:
+        try:
+            return await _resolve_row(row, existing, lookups)
+        finally:
+            if note is not None:
+                note()
+
+    tasks = [asyncio.create_task(one(row)) for row in rows]
+    try:
+        return await asyncio.gather(*tasks)
+    except BaseException:
+        # `gather` does NOT cancel its siblings when one of them raises. Without this, an
+        # unexpected failure would leave hundreds of searches running against the upstreams
+        # on behalf of a response that is already lost.
+        for task in tasks:
+            task.cancel()
+        raise
+    finally:
+        if own:
+            lookups.close()
+
+
+def _ndjson(event: dict) -> str:
+    """One newline-delimited JSON event.
+
+    The newline IS the frame, so nothing inside an event may contain a raw one — which is
+    exactly what `json.dumps` guarantees, since it escapes newlines inside strings.
+    """
+    return json.dumps(event) + "\n"
+
+
+class _PreviewRun:
+    """One preview's in-flight work, and the single call that stops all of it.
+
+    WHY THE CANCELLATION DOES NOT LIVE IN THE GENERATOR (T-15 round 2, F1).
+    The first cut cancelled the worker from `_preview_events`'s `finally`. An async
+    generator's `finally` only runs if the generator FRAME IS RESUMED — by `athrow`,
+    `aclose`, or a garbage collector at some unspecified later time. Starlette's
+    `StreamingResponse.__call__` races `stream_response` against `listen_for_disconnect` in
+    an anyio task group and cancels the whole scope when the client goes, so where that
+    cancellation lands decides whether the `finally` ever runs at all:
+
+      * inside `await body_iterator.__anext__()` — the error is thrown INTO the generator,
+        its `finally` runs, everything stops. This is also exactly what an explicit
+        `aclose()` does, which is why a test that closes the stream by hand always passed;
+      * inside `await send(chunk)` — the generator is left SUSPENDED AT ITS YIELD and never
+        resumed. The worker and its hundreds of child searches run to completion for a client
+        that has already gone.
+
+    The second branch is the LIKELY one in production: uvicorn awaits `flow.drain()` whenever
+    the write buffer is paused, which is the state a thousand-row preview with a closing
+    client is in. Reproduced against this code at 600 rows, disconnecting after 40 searches:
+    the in-anext shape stopped dead; the in-send shape sent 1072 more searches to TMDB and
+    IGDB for a client that had already gone.
+
+    So cancellation hangs off `StreamingResponse(background=...)` instead. `__call__` awaits
+    `self.background()` AFTER the task group unwinds, and an anyio cancel scope absorbs its
+    own cancellation — so that line is reached on the disconnect path exactly as it is on the
+    success path, wherever the cancellation happened to land, with no dependence on the
+    generator being resumed. `tests/test_import_scale.py` drives both shapes through the real
+    ASGI interface and asserts the searches stop while the generator is still suspended.
+    """
+
+    def __init__(self, rows: list[dict], problems: list[str], existing: set) -> None:
+        self.rows = rows
+        self.problems = problems
+        self.existing = existing
+        self.total = len(rows)
+        self.settled = 0
+        self.outcome: dict = {}
+        self.ticks: asyncio.Queue = asyncio.Queue()
+        # Owned HERE, not by `_resolve_rows`, so `cancel()` can reach the searches without
+        # the worker frame having to be resumed first.
+        self.lookups = _Lookups()
+        self.worker = asyncio.create_task(self._run())
+
+    def _note(self) -> None:
+        self.settled += 1
+        self.ticks.put_nowait(1)
+
+    async def _run(self) -> None:
+        try:
+            self.outcome["resolved"] = await _resolve_rows(
+                self.rows, self.existing, self._note, self.lookups
+            )
+        except Exception as error:  # noqa: BLE001 — re-reported as a terminal event, see below
+            self.outcome["error"] = error
+            logger.exception(
+                "import preview failed after %d of %d rows", self.settled, self.total
+            )
+        finally:
+            # The sentinel goes out whatever happened, including cancellation, so the event
+            # loop can never be left waiting on a worker that has stopped.
+            self.ticks.put_nowait(None)
+
+    async def cancel(self) -> None:
+        """Stop everything this preview started. Idempotent, and runs on EVERY exit path.
+
+        Async on purpose: `BackgroundTask` sends a SYNC callable to a worker thread, and
+        `Task.cancel()` is not safe to call from off the event loop.
+
+        Both halves are needed. Cancelling the worker eventually reaches `_resolve_rows`'s own
+        `finally`, but only once that frame is resumed; closing the lookups here stops the
+        searches in this tick instead. On the success path both are already done and this is
+        a no-op that only drains unretrieved exceptions.
+        """
+        self.worker.cancel()
+        self.lookups.close()
+
+
+async def _preview_events(run: _PreviewRun):
+    """The preview as a stream of events, the last of which is the whole answer (T-15 AC3).
+
+    WHY A STREAM AND NOT A JOB ID.
+    This endpoint used to return one JSON blob at the end, so a thousand-row preview was a
+    spinner for as long as it took and there was no way to make it anything else — "the
+    preview stays responsive" is an API change, not a tuning problem. The two candidates were
+    chunked streaming and a job id the client polls. Streaming wins HERE, in a single-user
+    app on loopback, because it needs no server-side job registry: nothing to garbage-collect,
+    nothing stranded by a restart, no second endpoint, and no question of who owns a job. An
+    abandoned preview stops spending upstream quota rather than running to completion for
+    nobody — but see `_PreviewRun`: that part is NOT free, and getting it for free was the
+    bug.
+
+    WHAT IT COSTS. Once the first byte is out the status code is already 200, so a failure
+    part-way cannot be an HTTP status any more. It becomes a terminal `error` event, and
+    `frontend/src/api.js` turns that back into a thrown Error — a stream that merely stopped
+    would otherwise be indistinguishable from a successful empty preview.
+
+    THIS IS NOT AN ADDITIVE CHANGE, and an earlier draft of this docstring said it was. The
+    content type moved from `application/json` to `application/x-ndjson` and the body is no
+    longer valid JSON as a whole — only the FINAL LINE kept the shape this endpoint used to
+    return. A client that ignores the earlier lines still has to split the body on newlines
+    and parse the last one; it cannot hand the whole response to a JSON parser any more. The
+    blast radius was two consumers, both updated in the same commit set, and the README never
+    documented this endpoint (so AC7 is genuinely untouched) — but "additive" is the wrong
+    word for it and would mislead the next reader.
+    """
+    yield _ndjson({"event": "start", "total": run.total, "problems": run.problems})
+
+    try:
+        while run.total:
+            tick = await run.ticks.get()
+            while tick is not None:  # coalesce a burst of ticks into one line
+                try:
+                    tick = run.ticks.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+            yield _ndjson({"event": "progress", "resolved": run.settled, "total": run.total})
+            if tick is None:
+                break
+        await run.worker
+    finally:
+        # Defence in depth, NOT the guarantee — this line runs only when the generator frame
+        # is resumed, which is the whole of F1. `_PreviewRun.cancel` is the guarantee.
+        if not run.worker.done():
+            run.worker.cancel()
+
+    if "error" in run.outcome:
+        yield _ndjson({"event": "error",
+                       "detail": "the preview failed part-way — nothing was written"})
+        return
+
+    resolved = run.outcome["resolved"]
+    counts: dict = {}
     for entry in resolved:
         counts[entry["state"]] = counts.get(entry["state"], 0) + 1
     # The client lets a human pick a different candidate after this response, and that
     # candidate may itself already be on the list. Without the key set it would count that
     # row as importable and then promise a number the commit cannot deliver.
-    return JSONResponse({
-        "rows": resolved, "problems": problems, "counts": counts,
-        "existing": [f"{source}:{source_id}" for source, source_id in sorted(existing)],
+    yield _ndjson({
+        "event": "result", "rows": resolved, "problems": run.problems, "counts": counts,
+        "existing": [f"{source}:{source_id}" for source, source_id in sorted(run.existing)],
     })
 
 
+@api.post("/import/preview")
+async def import_preview(payload: dict = Body(...)) -> StreamingResponse:
+    """Resolve a CSV against the sources and report what WOULD happen. Writes nothing.
+
+    Preview and commit are separate endpoints on purpose: it makes "nothing is written until
+    you confirm" a structural fact rather than a promise in a docstring.
+
+    Answers as an NDJSON stream — `_preview_events` says why, and why not a job id.
+
+    The run is created HERE rather than inside the generator so the response can be handed a
+    `BackgroundTask` that stops it. Starlette awaits that task after the stream ends *however*
+    it ended, including a client that disconnected mid-write — which is the one exit an async
+    generator's own `finally` does not cover. `_PreviewRun` has the long version.
+    """
+    rows, problems = csvio.parse(payload.get("text") or "")
+    # Read before the stream opens, so a database failure is still a real HTTP status.
+    existing = set()
+    if rows:
+        existing = {(r["source"], r["source_id"])
+                    for r in query("SELECT source, source_id FROM titles")}
+    run = _PreviewRun(rows, problems, existing)
+    return StreamingResponse(
+        _preview_events(run),
+        media_type="application/x-ndjson",
+        background=BackgroundTask(run.cancel),
+    )
 @api.post("/import/commit")
 async def import_commit(payload: dict = Body(...)) -> JSONResponse:
     """Write the confirmed rows. All of them, or none of them.
@@ -370,24 +663,71 @@ async def import_commit(payload: dict = Body(...)) -> JSONResponse:
 
     # Fetch everything FIRST, outside the transaction: network calls inside an open write
     # transaction would hold a lock for the length of the slowest upstream request.
+    #
+    # Bounded concurrency lives HERE, in the fetch phase, and nowhere else (T-15). What comes
+    # out is an ordered list of already-resolved records; the transaction below then does
+    # nothing but write, one row at a time, on one connection.
     prepared, failures = [], []
-    for entry in entries:
+    gate = asyncio.Semaphore(SEARCH_CONCURRENCY)
+    fetched: dict[tuple, asyncio.Task] = {}
+
+    async def fetch_once(source: str, source_id: str, media_type: str | None) -> dict:
+        async with gate:
+            return await _fetch(source, source_id, media_type)
+
+    async def prepare(entry: dict) -> tuple:
         chosen = entry.get("chosen") or {}
         source, source_id = chosen.get("source"), str(chosen.get("source_id") or "")
         if not source or not source_id:
-            failures.append({"title": entry.get("row", {}).get("title"), "error": "no choice made"})
-            continue
+            return None, {"title": entry.get("row", {}).get("title"), "error": "no choice made"}
+        # The same title chosen twice in one batch is fetched once. The insert loop still
+        # sees BOTH entries and still reports the second as already on the list — that
+        # decision belongs to the transaction, not to this cache.
+        key = (source, source_id, chosen.get("media_type"))
+        task = fetched.get(key)
+        if task is None:
+            task = fetched[key] = asyncio.create_task(fetch_once(*key))
+        # SHARED-TASK CANCELLATION TRAP (T-15 round 2, F6 — latent, the second of two sites;
+        # `_Lookups.get` is the other and carries the full explanation). Every entry choosing
+        # this same title awaits the SAME task, so cancelling any one waiter cancels the task
+        # and fails all the others. Safe today because nothing cancels a single entry — the
+        # `except BaseException` below cancels the whole batch at once. A per-entry timeout
+        # would make it live, and `await asyncio.shield(task)` is the guard for that day.
         try:
-            record = await _fetch(source, source_id, chosen.get("media_type"))
+            record = await task
         except (SourceError, HTTPException) as error:
-            failures.append({"title": entry.get("row", {}).get("title"),
-                             "error": getattr(error, "detail", str(error))})
-            continue
-        prepared.append((record, entry.get("row") or {}))
+            return None, {"title": entry.get("row", {}).get("title"),
+                          "error": getattr(error, "detail", str(error))}
+        return (record, entry.get("row") or {}), None
+
+    tasks = [asyncio.create_task(prepare(entry)) for entry in entries]
+    try:
+        # `gather` preserves the order it was given, so `prepared` stays in FILE ORDER
+        # however the fetches interleaved — which is what the queue positions below depend on.
+        outcomes = await asyncio.gather(*tasks)
+    except BaseException:
+        for task in (*tasks, *fetched.values()):
+            task.cancel()
+        raise
+    for ok, failure in outcomes:
+        if failure is not None:
+            failures.append(failure)
+        else:
+            prepared.append(ok)
 
     if not prepared:
         raise HTTPException(400, {"detail": "nothing could be resolved", "failures": failures})
 
+    # ── ONE transaction, ONE connection, STRICTLY SEQUENTIAL ────────────────────────────
+    # Nothing below this line may be made concurrent. Two properties depend on it, and both
+    # are silent when broken:
+    #   * the per-row duplicate SELECT sees the UNCOMMITTED inserts of earlier rows in this
+    #     same batch, because it runs on this same connection. That is the whole mechanism
+    #     for in-batch duplicates;
+    #   * `top += 10` walks queue positions forward in file order (T-7's gap-tolerant
+    #     scheme). It has no parallel form.
+    # And the guarantee itself: `db.connection()` commits once at the end and rolls the whole
+    # thing back on any exception, which is only meaningful while this is one unit of work.
     added, skipped = [], []
     with connection() as conn:
         top = conn.execute("SELECT COALESCE(MAX(queue_position), 0) FROM titles").fetchone()[0]
