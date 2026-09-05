@@ -8,6 +8,7 @@ import { skinPicker } from './skins.js';
 import { route, start, navigate, current } from './router.js';
 import { queueView } from './views/queue.js';
 import { wheelView } from './views/wheel.js';
+import { seenView } from './views/seen.js';
 import { homeView } from './views/home.js';
 import { titleView } from './views/title.js';
 import { addView } from './views/add.js';
@@ -16,6 +17,7 @@ const NAV = [
   { path: '', label: 'Up next' },
   { path: 'queue', label: 'The queue' },
   { path: 'wheel', label: "Can't decide" },
+  { path: 'seen', label: 'Seen' },
   { path: 'add', label: 'Add' },
 ];
 
@@ -43,6 +45,7 @@ function shell() {
 route('', homeView);
 route('queue', queueView);
 route('wheel', wheelView);
+route('seen', seenView);
 route('add', addView);
 route(/^title\/(\d+)$/, titleView);
 

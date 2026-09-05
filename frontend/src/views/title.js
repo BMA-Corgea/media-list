@@ -3,6 +3,7 @@
 import { api } from '../api.js';
 import { navigate } from '../router.js';
 import { verbFor } from '../kinds.js';
+import { starsEl } from './seen.js';
 
 /** A label/value pair, or nothing at all. Never renders an empty label. */
 function fact(label, value) {
@@ -157,12 +158,72 @@ export async function titleView(id) {
   }
   // No link row at all when there is nothing to link to — never a dead link.
 
-  const done = Object.assign(document.createElement('button'), { className: 'btn btn--primary', textContent: verb.imperative });
-  done.disabled = true;
-  done.title = 'Rating and the Seen archive arrive with T-9';
-  actions.append(done);
+  // ── rating ────────────────────────────────────────────────────────────────────────
+  const rating = document.createElement('div');
+  rating.className = 'rating';
+
+  function renderRating() {
+    rating.replaceChildren();
+    if (record.status === 'seen') {
+      const row = document.createElement('div');
+      row.className = 'rating__row';
+      // Re-rating is just picking again; there is no separate edit mode for a score.
+      row.append(
+        starsEl(record.stars, { interactive: true, onPick: async (n) => { record = await api.patch(record.id, { stars: n }); renderRating(); } }),
+        Object.assign(document.createElement('span'), {
+          className: 'card__meta',
+          textContent: record.watched_at ? `${verb.past} ${new Date(record.watched_at).toLocaleDateString()}` : verb.past,
+        }),
+      );
+
+      const review = Object.assign(document.createElement('textarea'), {
+        className: 'field', rows: 3, maxLength: 1000,
+        placeholder: `What did you think? (optional)`, value: record.review || '',
+      });
+      const save = Object.assign(document.createElement('button'), { className: 'btn', textContent: 'Save review' });
+      save.addEventListener('click', async () => {
+        save.disabled = true; save.textContent = 'Saved';
+        record = await api.patch(record.id, { review: review.value });
+        setTimeout(() => { save.disabled = false; save.textContent = 'Save review'; }, 1200);
+      });
+
+      const undo = Object.assign(document.createElement('button'), { className: 'btn btn--ghost', textContent: 'Put it back in the queue' });
+      undo.addEventListener('click', async () => {
+        undo.disabled = true;
+        record = await api.patch(record.id, { status: 'queued' });
+        renderRating();
+      });
+
+      rating.append(
+        Object.assign(document.createElement('p'), { className: 'section-title', textContent: 'Your verdict' }),
+        row, review,
+        Object.assign(document.createElement('div'), { className: 'actions' }),
+      );
+      rating.lastElementChild.append(save, undo);
+      return;
+    }
+
+    const prompt = Object.assign(document.createElement('button'), { className: 'btn btn--primary', textContent: verb.imperative });
+    prompt.addEventListener('click', () => {
+      const ask = document.createElement('div');
+      ask.className = 'rating__ask';
+      ask.append(
+        Object.assign(document.createElement('p'), { className: 'section-title', textContent: `How was it? (required)` }),
+        // A rating is required, so picking a star IS the action — no separate confirm button
+        // to leave a half-finished state behind.
+        starsEl(0, { interactive: true, onPick: async (n) => {
+          record = await api.patch(record.id, { stars: n, status: 'seen' });
+          renderRating();
+        } }),
+      );
+      rating.replaceChildren(ask);
+    });
+    rating.append(prompt);
+  }
+  renderRating();
 
   const top = Object.assign(document.createElement('button'), { className: 'btn', textContent: 'Move to top of queue' });
+  if (record.status === 'seen') top.hidden = true;
   top.addEventListener('click', async () => {
     top.disabled = true;
     await api.patch(record.id, { move_to_top: true });
@@ -177,7 +238,7 @@ export async function titleView(id) {
   });
 
   actions.append(top, remove);
-  body.append(actions);
+  body.append(rating, actions);
   page.append(body);
   return page;
 }

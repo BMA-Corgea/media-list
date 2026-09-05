@@ -457,6 +457,26 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .reveal .actions { margin-top: 12px; }
 @keyframes reveal-in { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
 
+
+/* ── rating and the archive ─────────────────────────────────────────────────────────── */
+.rating { border-left: 2px solid var(--seen); padding-left: 16px; margin: 0 0 26px; }
+.rating__row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.rating__ask { display: flex; flex-direction: column; gap: 6px; }
+.rating .field { margin: 8px 0 10px; max-width: 520px; resize: vertical; }
+.stars { font-size: 19px; letter-spacing: 3px; }
+.stars--pick { display: inline-flex; gap: 2px; }
+.stars--pick button {
+  border: 0; background: none; padding: 0 1px; cursor: pointer;
+  font-size: 24px; line-height: 1; color: var(--star);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.stars--pick button.off { color: var(--faint); }
+.stars--pick:hover button { color: var(--star); }
+.stars--pick button:hover { transform: scale(1.22); }
+.grid--seen { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+.seen-card .poster { cursor: pointer; }
+.seen-card__line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }

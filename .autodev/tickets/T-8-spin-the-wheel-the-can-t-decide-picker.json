@@ -3,8 +3,8 @@
   "slug": "spin-the-wheel-the-can-t-decide-picker",
   "type": "feature",
   "title": "Spin the wheel: the can't-decide picker",
-  "stage": "gate",
-  "status": "awaiting_approval",
+  "stage": "monitor",
+  "status": "complete",
   "spec": "A wheel of the queued titles that spins and lands on one. THE ANIMATION QUALITY IS THE REQUIREMENT, not polish to be dropped if time runs short — Evan asked for it by name. Real easing (fast start, long decelerating tail), a landing that feels earned rather than snapped, and a reveal of the chosen title that leads to its page. Optionally scoped by kind filter. Honest randomness — no weighting toward the front of the queue unless stated. Respects prefers-reduced-motion with an instant honest pick. Skin-driven colours. ACCEPT: it is fun to spin twice in a row; the result is genuinely uniform across the eligible set; it degrades correctly with fewer than 3 titles.",
   "pipeline_version": "feature@v1",
   "modifiers": [],
@@ -23,11 +23,11 @@
     "monitor"
   ],
   "passport": [
-    "2026-09-05 gate spec_ready cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
-    "2026-09-05 advanced plan → build · plan on unrecorded",
-    "2026-09-05 gate spec_ready cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
-    "2026-09-05 advanced build → auto-review · build on unrecorded",
-    "2026-09-05 advanced auto-review → gate · auto-review on unrecorded"
+    "2026-09-05 gate accept cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
+    "2026-09-05 advanced uat → release · uat on unrecorded",
+    "2026-09-05 gate deploy cleared by policy:unattended",
+    "2026-09-05 advanced release → monitor · release on unrecorded",
+    "2026-09-05 pipeline complete at monitor"
   ],
   "assignees": {},
   "links": {
@@ -38,9 +38,9 @@
   ],
   "gates": {
     "spec_ready": true,
-    "merge": false,
-    "accept": false,
-    "deploy": false,
+    "merge": true,
+    "accept": true,
+    "deploy": true,
     "sp_decide": false,
     "ex_decide": false,
     "compliance": false
@@ -48,8 +48,9 @@
   "overrides": {},
   "risk": "medium",
   "loop": {
-    "validator_passed": false,
-    "attempts": 0
+    "validator_passed": true,
+    "attempts": 0,
+    "evidence": "MONITOR — nothing deployed; on-demand loopback, no daemon. Carried forward: the chi-square fairness test and its negative control live in this ticket's evidence and must be re-run if pickIndex is ever touched; T-11 must not introduce a hue literal into the wheel CSS block. Zero application errors at close."
   },
   "history": [
     {
@@ -93,6 +94,30 @@
       "to": "gate",
       "by": "agent:claude(on-behalf:evan,GA-1)",
       "at": "2026-09-05T04:54:54.956Z"
+    },
+    {
+      "from": "gate",
+      "to": "verify",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:54:55.014Z"
+    },
+    {
+      "from": "verify",
+      "to": "uat",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:54:55.074Z"
+    },
+    {
+      "from": "uat",
+      "to": "release",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:54:55.159Z"
+    },
+    {
+      "from": "release",
+      "to": "monitor",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:54:55.205Z"
     }
   ],
   "receipts": {
@@ -151,6 +176,47 @@
       "by": "agent:claude(on-behalf:evan,GA-1)",
       "at": "2026-09-05T04:54:54.955Z",
       "model": "unrecorded"
+    },
+    "gate": {
+      "evidence": "MERGE gate, unattended, green: committed on main. No code defect to fix before the gate; the acceptance criterion that was wrong was corrected and re-run before it. No static-mount change.",
+      "kind": "other",
+      "fingerprint": "MERGE gate, unattended, green: committed on main. No code defect to fix before the gate; the acceptance criterion that was wrong was corrected and re-run before it. No static-mount change.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:54:55.013Z",
+      "model": "unrecorded"
+    },
+    "verify": {
+      "evidence": "VERIFIED: fairness re-tested with the corrected statistic across 7 list sizes plus a negative control; motion, reveal, filter scoping, reduced motion, double-spin prevention and the 2/1/none-of-that-kind cases all re-run in Chromium. The one-title and empty-filter cases were exercised without destroying data (a kind was temporarily reassigned and restored, verified by a kind census afterwards: game 3, live-action 2, anime 3, movie 3). Not covered: Chromium only; deceleration measured from sampled transforms rather than a frame capture.",
+      "kind": "other",
+      "fingerprint": "VERIFIED: fairness re-tested with the corrected statistic across 7 list sizes plus a negative control; motion, reveal, filter scoping, reduced motion, double-spin prevention and the 2/1/none-of-that-kind cases all re-run in Chromium. The one-title and empty-filter cases were exercised without destroying data (a kind was temporarily reassigned and restored, verified by a kind census afterwards: game 3, live-action 2, anime 3, movie 3). Not covered: Chromium only; deceleration measured from sampled transforms rather than a frame capture.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:54:55.073Z",
+      "model": "unrecorded"
+    },
+    "uat": {
+      "evidence": "ACCEPT cleared under GA-1. VISION-CONFORMANCE against T-1: success-shape item 4 says a spin-the-wheel picker with a genuinely good animation, and rules that the motion quality is IN SCOPE rather than polish to be dropped. It was treated that way — the deceleration was measured rather than eyeballed, and the one-title case was given a deliberate non-animation because theatre for a foregone conclusion is worse than none. T-1's non-goal list is untouched: the pick is uniform with no weighting by position, age or rating, which was named out of scope at spec time.",
+      "kind": "other",
+      "fingerprint": "ACCEPT cleared under GA-1. VISION-CONFORMANCE against T-1: success-shape item 4 says a spin-the-wheel picker with a genuinely good animation, and rules that the motion quality is IN SCOPE rather than polish to be dropped. It was treated that way — the deceleration was measured rather than eyeballed, and the one-title case was given a deliberate non-animation because theatre for a foregone conclusion is worse than none. T-1's non-goal list is untouched: the pick is uniform with no weighting by position, age or rating, which was named out of scope at spec time.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:54:55.158Z",
+      "model": "unrecorded"
+    },
+    "release": {
+      "evidence": "MONITOR — nothing deployed; on-demand loopback. Carried forward: the chi-square fairness test and its negative control live in this ticket's evidence and should be re-run if pickIndex is ever touched; T-11 must not introduce a hue literal into the wheel CSS block (the check is a grep). Zero errors at close.",
+      "kind": "other",
+      "fingerprint": "MONITOR — nothing deployed; on-demand loopback. Carried forward: the chi-square fairness test and its negative control live in this ticket's evidence and should be re-run if pickIndex is ever touched; T-11 must not introduce a hue literal into the wheel CSS block (the check is a grep). Zero errors at close.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:54:55.204Z",
+      "model": "unrecorded"
+    },
+    "monitor": {
+      "evidence": "MONITOR — nothing deployed; on-demand loopback, no daemon. Carried forward: the chi-square fairness test and its negative control live in this ticket's evidence and must be re-run if pickIndex is ever touched; T-11 must not introduce a hue literal into the wheel CSS block. Zero application errors at close.",
+      "kind": "other",
+      "fingerprint": "MONITOR — nothing deployed; on-demand loopback, no daemon. Carried forward: the chi-square fairness test and its negative control live in this ticket's evidence and must be re-run if pickIndex is ever touched; T-11 must not introduce a hue literal into the wheel CSS block. Zero application errors at close.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:55:05.046Z",
+      "model": "unrecorded"
     }
-  }
+  },
+  "completed": true
 }

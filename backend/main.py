@@ -129,7 +129,12 @@ def list_titles(status: str | None = None) -> JSONResponse:
     if status in ("queued", "seen"):
         sql += " WHERE status = ?"
         params = (status,)
-    sql += " ORDER BY queue_position IS NULL, queue_position, added_at"
+    if status == "seen":
+        # Seen rows have no queue_position at all, so ordering by it would be meaningless —
+        # most recently finished first is what someone opening an archive wants.
+        sql += " ORDER BY watched_at DESC, added_at DESC"
+    else:
+        sql += " ORDER BY queue_position IS NULL, queue_position, added_at"
     return JSONResponse([serialise(r) for r in query(sql, params)])
 
 
@@ -211,6 +216,36 @@ def update_title(title_id: int, payload: dict = Body(...)) -> JSONResponse:
             # everywhere — the carousel caption, the grid card and the title page.
             why = (payload.get("why") or "").strip() or None
             conn.execute("UPDATE titles SET why = ? WHERE id = ?", (why, title_id))
+
+        # ── rating: the transition out of the queue ──────────────────────────────────
+        if "stars" in payload or payload.get("status") == "seen":
+            stars = payload.get("stars", row["stars"])
+            if stars is not None:
+                if not isinstance(stars, int) or isinstance(stars, bool) or not 1 <= stars <= 5:
+                    raise HTTPException(400, "stars must be a whole number from 1 to 5")
+            if payload.get("status") == "seen" and stars is None:
+                raise HTTPException(400, "a rating is required to mark something as seen")
+            conn.execute(
+                # queue_position is cleared, not kept: a seen title is out of the queue, and
+                # holding a stale position would let it sort back in if it ever returned.
+                "UPDATE titles SET stars = ?, status = 'seen', watched_at = ?, queue_position = NULL WHERE id = ?",
+                (stars, payload.get("watched_at") or now(), title_id),
+            )
+
+        if "review" in payload:
+            review = (payload.get("review") or "").strip() or None
+            conn.execute("UPDATE titles SET review = ? WHERE id = ?", (review, title_id))
+
+        # ── un-watching: back to the end of the queue, opinion intact ────────────────
+        if payload.get("status") == "queued":
+            top = conn.execute("SELECT COALESCE(MAX(queue_position), 0) FROM titles").fetchone()[0]
+            # Stars and review are deliberately NOT cleared. The queue moved on while this was
+            # away, so it returns to the END rather than to a stale position, but a rewatch
+            # must not erase what was thought the first time.
+            conn.execute(
+                "UPDATE titles SET status = 'queued', watched_at = NULL, queue_position = ? WHERE id = ?",
+                (top + 10, title_id),
+            )
 
         if payload.get("move_to_top"):
             # MIN - 10 rather than renumbering every row: O(1), and it preserves the
