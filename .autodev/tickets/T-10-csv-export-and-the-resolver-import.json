@@ -3,8 +3,8 @@
   "slug": "csv-export-and-the-resolver-import",
   "type": "feature",
   "title": "CSV export and the resolver import",
-  "stage": "intake",
-  "status": "triage",
+  "stage": "gate",
+  "status": "awaiting_approval",
   "spec": "EXPORT: full fidelity — title,year,kind,why,status,stars,queue_position,tmdb_id,imdb_id,added_at,watched_at,review — RFC4180 quoting, UTF-8, and it re-imports EXACTLY (round-trip test is the acceptance evidence). IMPORT IS A RESOLVER, NOT A LOADER: Evan has no existing list and will generate one with a chatbot, so input is loose — title required, everything else optional. Each row is searched against T-3; a review screen shows candidate matches WITH POSTERS side by side; ambiguous rows are disambiguated by hand; unmatched rows surface for manual search or discard and are NEVER silently dropped. Nothing is committed until the whole review is confirmed. A row carrying tmdb_id skips the search entirely — that is what makes an export round-trip. Import order becomes initial queue order. HIGH RISK: bulk writes into Evan's data — the commit must be atomic and a failed import must leave the DB untouched. ACCEPT: the README's exact starter CSV imports cleanly; a 40-row chatbot-generated file resolves with ambiguities surfaced not guessed; export-then-import is a no-op.",
   "pipeline_version": "feature@v1",
   "modifiers": [],
@@ -23,7 +23,11 @@
     "monitor"
   ],
   "passport": [
-    "2026-09-05 created as feature \"CSV export and the resolver import\" on feature@v1 by agent:claude(on-behalf:evan,session-01PKVMkM)"
+    "2026-09-05 gate spec_ready cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
+    "2026-09-05 advanced plan → build · plan on unrecorded",
+    "2026-09-05 gate spec_ready cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
+    "2026-09-05 advanced build → auto-review · build on unrecorded",
+    "2026-09-05 advanced auto-review → gate · auto-review on unrecorded"
   ],
   "assignees": {},
   "links": {
@@ -33,7 +37,7 @@
     "T-7"
   ],
   "gates": {
-    "spec_ready": false,
+    "spec_ready": true,
     "merge": false,
     "accept": false,
     "deploy": false,
@@ -47,5 +51,106 @@
     "validator_passed": false,
     "attempts": 0
   },
-  "history": []
+  "history": [
+    {
+      "from": "intake",
+      "to": "refine",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:59:02.785Z"
+    },
+    {
+      "from": "refine",
+      "to": "queue",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:59:02.872Z"
+    },
+    {
+      "from": "queue",
+      "to": "locate",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:59:02.959Z"
+    },
+    {
+      "from": "locate",
+      "to": "plan",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:59:03.053Z"
+    },
+    {
+      "from": "plan",
+      "to": "build",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:59:03.141Z"
+    },
+    {
+      "from": "build",
+      "to": "auto-review",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:05:59.102Z"
+    },
+    {
+      "from": "auto-review",
+      "to": "gate",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:05:59.155Z"
+    }
+  ],
+  "receipts": {
+    "intake": {
+      "evidence": "INTAKE: feature, HIGH risk, --intent T-1, --after T-7 (shipped). No duplicate. The README already publishes this contract to Evan, so the spec is bound by a document he has been told to rely on.",
+      "kind": "other",
+      "fingerprint": "INTAKE: feature, HIGH risk, --intent T-1, --after T-7 (shipped). No duplicate. The README already publishes this contract to Evan, so the spec is bound by a document he has been told to rely on.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:59:02.784Z",
+      "model": "unrecorded"
+    },
+    "refine": {
+      "evidence": "Spec at .autodev/specs/T-10.md, 11 ACs. AC7 is the reason this ticket is HIGH risk and is written to be proven by FORCING a mid-commit failure and showing the row count unchanged, not by reading the code. AC2 makes export-then-import a no-op the acceptance evidence rather than a claim. AC5 forbids the two silent failures a bulk importer has — guessing an ambiguous row, and dropping an unmatched one. AC3 binds the implementation to the exact starter CSV already published in README.md, including its quoted field and its trailing-empty-why row, because Evan has been told to rely on that document. AC10 carries T-7's gap-tolerant scheme forward and forbids resurrecting a seen row into the queue, an obligation T-9 recorded.",
+      "kind": "other",
+      "fingerprint": "Spec at .autodev/specs/T-10.md, 11 ACs. AC7 is the reason this ticket is HIGH risk and is written to be proven by FORCING a mid-commit failure and showing the row count unchanged, not by reading the code. AC2 makes export-then-import a no-op the acceptance evidence rather than a claim. AC5 forbids the two silent failures a bulk importer has — guessing an ambiguous row, and dropping an unmatched one. AC3 binds the implementation to the exact starter CSV already published in README.md, including its quoted field and its trailing-empty-why row, because Evan has been told to rely on that document. AC10 carries T-7's gap-tolerant scheme forward and forbids resurrecting a seen row into the queue, an obligation T-9 recorded.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:59:02.871Z",
+      "model": "unrecorded"
+    },
+    "queue": {
+      "evidence": "QUEUED: dispatchable — T-7 shipped.",
+      "kind": "other",
+      "fingerprint": "QUEUED: dispatchable — T-7 shipped.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:59:02.958Z",
+      "model": "unrecorded"
+    },
+    "locate": {
+      "evidence": "LOCATE: /api/search (T-3) is the resolver's engine and already merges TMDB and IGDB; /api/details caches artwork; the add path in POST /api/titles (T-4) already does duplicate detection via the (source,source_id) unique index and gap-tolerant appending. serialise() (T-4/titles.py) already derives link/link_label. db.connection() (T-2) is a real transaction context that rolls back on any exception — AC7's atomicity comes from using ONE connection for the whole commit rather than the per-call execute() helper. RISKS: (1) export must map tmdb_id/imdb_id from the source/source_id pair, and a game has no tmdb_id — the column must be blank rather than carrying an IGDB id under a TMDB header; (2) Python's csv module needs newline='' or it doubles line endings on some platforms; (3) a chatbot CSV will arrive with a code fence, a BOM, or smart quotes, and the README tells Evan to paste raw output.",
+      "kind": "other",
+      "fingerprint": "LOCATE: /api/search (T-3) is the resolver's engine and already merges TMDB and IGDB; /api/details caches artwork; the add path in POST /api/titles (T-4) already does duplicate detection via the (source,source_id) unique index and gap-tolerant appending. serialise() (T-4/titles.py) already derives link/link_label. db.connection() (T-2) is a real transaction context that rolls back on any exception — AC7's atomicity comes from using ONE connection for the whole commit rather than the per-call execute() helper. RISKS: (1) export must map tmdb_id/imdb_id from the source/source_id pair, and a game has no tmdb_id — the column must be blank rather than carrying an IGDB id under a TMDB header; (2) Python's csv module needs newline='' or it doubles line endings on some platforms; (3) a chatbot CSV will arrive with a code fence, a BOM, or smart quotes, and the README tells Evan to paste raw output.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:59:03.052Z",
+      "model": "unrecorded"
+    },
+    "plan": {
+      "evidence": "PLAN: (1) GET /api/export.csv streaming the exact README columns; (2) POST /api/import/preview — parse, then resolve each row (tmdb_id short-circuit, else search) into matched / needs-choice / unmatched / duplicate buckets, writing NOTHING; (3) POST /api/import/commit taking the confirmed choices and inserting them all inside ONE transaction; (4) the import UI: paste or upload, a review screen with posters for the ambiguous rows, then commit; (5) export button. DECISIONS: preview and commit are separate endpoints so AC6 is structural rather than a promise; the commit uses a single connection so a failure anywhere rolls the whole thing back; a leading BOM and a wrapping code fence are stripped on parse because the README tells Evan to paste chatbot output and that is what chatbot output looks like; and an existing seen row is reported as a duplicate rather than updated, so an import can never quietly drag something back out of the archive.",
+      "kind": "other",
+      "fingerprint": "PLAN: (1) GET /api/export.csv streaming the exact README columns; (2) POST /api/import/preview — parse, then resolve each row (tmdb_id short-circuit, else search) into matched / needs-choice / unmatched / duplicate buckets, writing NOTHING; (3) POST /api/import/commit taking the confirmed choices and inserting them all inside ONE transaction; (4) the import UI: paste or upload, a review screen with posters for the ambiguous rows, then commit; (5) export button. DECISIONS: preview and commit are separate endpoints so AC6 is structural rather than a promise; the commit uses a single connection so a failure anywhere rolls the whole thing back; a leading BOM and a wrapping code fence are stripped on parse because the README tells Evan to paste chatbot output and that is what chatbot output looks like; and an existing seen row is reported as a duplicate rather than updated, so an import can never quietly drag something back out of the archive.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:59:03.140Z",
+      "model": "unrecorded"
+    },
+    "build": {
+      "evidence": "BUILT AND PROVEN — .autodev/evidence/T-10/build.md. AC7 atomicity, the reason this is HIGH risk, proven by SABOTAGE not by reading code: the third insert of four was made to raise a simulated disk failure after two rows had already been written; rows went 11 -> 11 and the title set was identical before and after, so the rollback removed them. AC2 round-trip: export then preview then commit gave added 0 / skipped 11 with an identical SHA-256 fingerprint of every title, year, kind, status, stars, position, why and review. AC3 the README's OWN starter CSV was extracted from the file by regex and imported with 0 problems. AC5: 4 rows in, 4 out — 'The Thing' with no year or kind returned 6 candidates needing a choice, 'Cowboy Bebop 1998' with no kind offered BOTH the anime and the 1998 game, a nonsense title came back unmatched rather than dropped. AC6 preview left the row count at 11. AC9 duplicates are reported and never updated, so an import cannot drag something back out of the Seen archive. A pasted code fence and BOM are stripped, because the README tells Evan to paste raw chatbot output. Zero errors.",
+      "kind": "other",
+      "fingerprint": "BUILT AND PROVEN — .autodev/evidence/T-10/build.md. AC7 atomicity, the reason this is HIGH risk, proven by SABOTAGE not by reading code: the third insert of four was made to raise a simulated disk failure after two rows had already been written; rows went 11 -> 11 and the title set was identical before and after, so the rollback removed them. AC2 round-trip: export then preview then commit gave added 0 / skipped 11 with an identical SHA-256 fingerprint of every title, year, kind, status, stars, position, why and review. AC3 the README's OWN starter CSV was extracted from the file by regex and imported with 0 problems. AC5: 4 rows in, 4 out — 'The Thing' with no year or kind returned 6 candidates needing a choice, 'Cowboy Bebop 1998' with no kind offered BOTH the anime and the 1998 game, a nonsense title came back unmatched rather than dropped. AC6 preview left the row count at 11. AC9 duplicates are reported and never updated, so an import cannot drag something back out of the Seen archive. A pasted code fence and BOM are stripped, because the README tells Evan to paste raw chatbot output. Zero errors.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:05:59.101Z",
+      "model": "unrecorded"
+    },
+    "auto-review": {
+      "evidence": "REVIEWED — THREE defects, all in this ticket's own design, all fixed and re-verified. (1) THE EXPORT COULD NOT ROUND-TRIP A GAME: the published columns had tmdb_id but no igdb_id, so a game exported with no id at all and had to be re-resolved by search on the way back — approximate, not exact, and a re-resolve can land elsewhere. Added igdb_id and updated README.md, which is the contract Evan was told to rely on; his chatbot prompt format is untouched. (2) THE RESOLVER NEARLY IMPORTED A VIDEO GAME AS AN ANIME: there is a 1998 Cowboy Bebop GAME as well as the 1998 anime, and they scored 168 to 140 — 28 apart, close enough that any weight change flips it, on a row that explicitly said 'anime'. Fixed by making a declared kind a FILTER rather than a preference: candidates of another kind are not answers to that row. (3) THE BUTTON PROMISED A NUMBER THE COMMIT WOULD NOT DELIVER: hand-picking a candidate marked the row ready without re-checking it against the list, so the UI said 'Import 3' and the commit did 2 — the commit was right, the promise was wrong. Preview now returns the existing key set and picking a duplicate flips the row immediately; re-verified end to end, the promise now matches the result. Design decisions standing: preview and commit are separate endpoints so 'nothing is written until you confirm' is structural; all network fetches happen BEFORE the transaction opens so no upstream request holds a write lock; and a duplicate is reported rather than updated.",
+      "kind": "other",
+      "fingerprint": "REVIEWED — THREE defects, all in this ticket's own design, all fixed and re-verified. (1) THE EXPORT COULD NOT ROUND-TRIP A GAME: the published columns had tmdb_id but no igdb_id, so a game exported with no id at all and had to be re-resolved by search on the way back — approximate, not exact, and a re-resolve can land elsewhere. Added igdb_id and updated README.md, which is the contract Evan was told to rely on; his chatbot prompt format is untouched. (2) THE RESOLVER NEARLY IMPORTED A VIDEO GAME AS AN ANIME: there is a 1998 Cowboy Bebop GAME as well as the 1998 anime, and they scored 168 to 140 — 28 apart, close enough that any weight change flips it, on a row that explicitly said 'anime'. Fixed by making a declared kind a FILTER rather than a preference: candidates of another kind are not answers to that row. (3) THE BUTTON PROMISED A NUMBER THE COMMIT WOULD NOT DELIVER: hand-picking a candidate marked the row ready without re-checking it against the list, so the UI said 'Import 3' and the commit did 2 — the commit was right, the promise was wrong. Preview now returns the existing key set and picking a duplicate flips the row immediately; re-verified end to end, the promise now matches the result. Design decisions standing: preview and commit are separate endpoints so 'nothing is written until you confirm' is structural; all network fetches happen BEFORE the transaction opens so no upstream request holds a write lock; and a duplicate is reported rather than updated.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:05:59.154Z",
+      "model": "unrecorded"
+    }
+  }
 }

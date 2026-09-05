@@ -9,6 +9,7 @@ import { route, start, navigate, current } from './router.js';
 import { queueView } from './views/queue.js';
 import { wheelView } from './views/wheel.js';
 import { seenView } from './views/seen.js';
+import { transferView } from './views/transfer.js';
 import { homeView } from './views/home.js';
 import { titleView } from './views/title.js';
 import { addView } from './views/add.js';
@@ -19,6 +20,7 @@ const NAV = [
   { path: 'wheel', label: "Can't decide" },
   { path: 'seen', label: 'Seen' },
   { path: 'add', label: 'Add' },
+  { path: 'transfer', label: 'Import' },
 ];
 
 function shell() {
@@ -47,6 +49,7 @@ route('queue', queueView);
 route('wheel', wheelView);
 route('seen', seenView);
 route('add', addView);
+route('transfer', transferView);
 route(/^title\/(\d+)$/, titleView);
 
 const app = document.querySelector('#app');

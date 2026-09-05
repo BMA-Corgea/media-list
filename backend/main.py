@@ -11,11 +11,12 @@ import json
 import sqlite3
 
 from fastapi import APIRouter, Body, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .artwork import cache as cache_art
+from . import csvio
 from .config import config
 from .db import bootstrap, connection, execute, query
 from .sources import anilist, igdb, tmdb
@@ -255,6 +256,172 @@ def update_title(title_id: int, payload: dict = Body(...)) -> JSONResponse:
 
         updated = conn.execute("SELECT * FROM titles WHERE id = ?", (title_id,)).fetchone()
     return JSONResponse(serialise(updated))
+
+
+@api.get("/export.csv")
+def export_csv() -> PlainTextResponse:
+    """The whole list, in the columns README.md promises. Re-imports exactly."""
+    rows = query("SELECT * FROM titles ORDER BY queue_position IS NULL, queue_position, added_at")
+    body = csvio.export_rows(rows)
+    return PlainTextResponse(
+        body,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="media-list-export.csv"'},
+    )
+
+
+@api.post("/import/preview")
+async def import_preview(payload: dict = Body(...)) -> JSONResponse:
+    """Resolve a CSV against the sources and report what WOULD happen. Writes nothing.
+
+    Preview and commit are separate endpoints on purpose: it makes "nothing is written until
+    you confirm" a structural fact rather than a promise in a docstring.
+    """
+    rows, problems = csvio.parse(payload.get("text") or "")
+    if not rows:
+        return JSONResponse({"rows": [], "problems": problems, "counts": {}})
+
+    existing = {(r["source"], r["source_id"]) for r in query("SELECT source, source_id FROM titles")}
+    resolved = []
+
+    for row in rows:
+        entry = {"row": row, "state": None, "chosen": None, "candidates": []}
+
+        if row["tmdb_id"] or row["igdb_id"]:
+            # An id from a previous export: trust it and skip the search entirely. This is
+            # what makes an export round-trip exactly rather than approximately.
+            source = "tmdb" if row["tmdb_id"] else "igdb"
+            source_id = row["tmdb_id"] or row["igdb_id"]
+            # TMDB ids are namespace-scoped (T-3): a stored kind tells us which one.
+            media_type = None
+            if source == "tmdb":
+                media_type = "tv" if row["kind"] in ("anime", "live-action") else "movie"
+            entry["chosen"] = {"source": source, "source_id": source_id, "media_type": media_type,
+                               "title": row["title"], "year": row["year"], "kind": row["kind"]}
+            entry["state"] = "duplicate" if (source, source_id) in existing else "matched"
+            resolved.append(entry)
+            continue
+
+        try:
+            found = []
+            if tmdb.available():
+                found += await tmdb.search(row["title"])
+            if igdb.available():
+                found += await igdb.search(row["title"])
+        except SourceError as error:
+            entry["state"] = "unmatched"
+            entry["error"] = error.detail
+            resolved.append(entry)
+            continue
+
+        # A DECLARED KIND IS A FILTER, NOT A PREFERENCE.
+        # There is a 1998 Cowboy Bebop VIDEO GAME as well as the 1998 anime — same title,
+        # same year. Scoring alone put them 28 points apart, close enough that a small weight
+        # change either way would have silently imported the game as the anime. If the row
+        # says what it is, candidates of another kind are not answers to it.
+        pool = found
+        if row["kind"]:
+            same_kind = [c for c in found if c.get("kind") == row["kind"]]
+            if same_kind:
+                pool = same_kind
+            else:
+                entry["note"] = f"nothing of kind {row['kind']!r} matched — showing every kind"
+
+        ranked = sorted(pool, key=lambda c: csvio.score(c, row), reverse=True)[:6]
+        if not ranked:
+            entry["state"] = "unmatched"
+        else:
+            best, second = ranked[0], (ranked[1] if len(ranked) > 1 else None)
+            gap = csvio.score(best, row) - (csvio.score(second, row) if second else -999)
+            entry["candidates"] = ranked
+            # A clear winner is proposed; anything close is handed back for a human choice.
+            # Guessing between two plausible titles is exactly the silent failure this
+            # importer exists to avoid.
+            if gap >= 35 and csvio.score(best, row) >= 100:
+                entry["chosen"] = best
+                entry["state"] = "duplicate" if (best["source"], best["source_id"]) in existing else "matched"
+            else:
+                entry["state"] = "choose"
+        resolved.append(entry)
+
+    counts = {}
+    for entry in resolved:
+        counts[entry["state"]] = counts.get(entry["state"], 0) + 1
+    # The client lets a human pick a different candidate after this response, and that
+    # candidate may itself already be on the list. Without the key set it would count that
+    # row as importable and then promise a number the commit cannot deliver.
+    return JSONResponse({
+        "rows": resolved, "problems": problems, "counts": counts,
+        "existing": [f"{source}:{source_id}" for source, source_id in sorted(existing)],
+    })
+
+
+@api.post("/import/commit")
+async def import_commit(payload: dict = Body(...)) -> JSONResponse:
+    """Write the confirmed rows. All of them, or none of them.
+
+    Every insert runs on ONE connection inside ONE transaction, so a failure anywhere — a bad
+    row, a dropped upstream, a crash — leaves the database exactly as it was. A half-imported
+    list would be worse than a failed import, because it is not obvious that it happened.
+    """
+    entries = payload.get("entries") or []
+    if not entries:
+        raise HTTPException(400, "nothing to import")
+
+    # Fetch everything FIRST, outside the transaction: network calls inside an open write
+    # transaction would hold a lock for the length of the slowest upstream request.
+    prepared, failures = [], []
+    for entry in entries:
+        chosen = entry.get("chosen") or {}
+        source, source_id = chosen.get("source"), str(chosen.get("source_id") or "")
+        if not source or not source_id:
+            failures.append({"title": entry.get("row", {}).get("title"), "error": "no choice made"})
+            continue
+        try:
+            record = await _fetch(source, source_id, chosen.get("media_type"))
+        except (SourceError, HTTPException) as error:
+            failures.append({"title": entry.get("row", {}).get("title"),
+                             "error": getattr(error, "detail", str(error))})
+            continue
+        prepared.append((record, entry.get("row") or {}))
+
+    if not prepared:
+        raise HTTPException(400, {"detail": "nothing could be resolved", "failures": failures})
+
+    added, skipped = [], []
+    with connection() as conn:
+        top = conn.execute("SELECT COALESCE(MAX(queue_position), 0) FROM titles").fetchone()[0]
+        for record, row in prepared:
+            duplicate = conn.execute(
+                "SELECT id, title, status FROM titles WHERE source = ? AND source_id = ?",
+                (record["source"], record["source_id"]),
+            ).fetchone()
+            if duplicate:
+                # Reported, never updated: an import must not quietly drag something back out
+                # of the Seen archive.
+                skipped.append({"title": duplicate["title"], "reason": f"already on the list ({duplicate['status']})"})
+                continue
+
+            detail = {**record.get("detail", {}), "media_type": record.get("media_type")}
+            status = "seen" if (row.get("status") == "seen" and row.get("stars")) else "queued"
+            top += 10
+            conn.execute(
+                """INSERT INTO titles (source, source_id, imdb_id, anilist_id, title, original_title,
+                        year, kind, summary, poster_path, backdrop_path, genres, detail, why,
+                        status, stars, review, queue_position, added_at, watched_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (record["source"], record["source_id"], record.get("imdb_id"), record.get("anilist_id"),
+                 record["title"], record.get("original_title"), record.get("year") or row.get("year"),
+                 record["kind"], record.get("summary"), record.get("poster_path"), record.get("backdrop_path"),
+                 json.dumps(record.get("genres") or []), json.dumps(detail), row.get("why"),
+                 status, row.get("stars") if status == "seen" else None,
+                 row.get("review"), None if status == "seen" else top,
+                 row.get("added_at") or now(), row.get("watched_at") if status == "seen" else None),
+            )
+            added.append(record["title"])
+
+    return JSONResponse({"added": added, "skipped": skipped, "failures": failures,
+                         "counts": {"added": len(added), "skipped": len(skipped), "failed": len(failures)}})
 
 
 SPREAD = 10  # the gap left between adjacent positions when the queue is renumbered

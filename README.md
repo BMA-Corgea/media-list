@@ -76,7 +76,7 @@ Then paste the result into the importer, check the matches, commit.
 Export is a full-fidelity backup, so it carries more than the starter format:
 
 ```csv
-title,year,kind,why,status,stars,queue_position,tmdb_id,imdb_id,added_at,watched_at,review
+title,year,kind,why,status,stars,queue_position,tmdb_id,igdb_id,imdb_id,added_at,watched_at,review
 ```
 
 Any export re-imports cleanly. The extra columns are optional on the way in, so a starter
@@ -87,7 +87,7 @@ CSV and a full export both go through the same door:
 | `status` | `queued` or `seen`. Defaults to `queued`. |
 | `stars` | `1`–`5`, or blank if unrated. |
 | `queue_position` | Integer. Blank rows are appended in file order. |
-| `tmdb_id` | When present, the resolver trusts it and skips the search entirely — this is what makes an export round-trip exactly. |
+| `tmdb_id` / `igdb_id` | Whichever source the title came from. When present, the resolver trusts it and skips the search entirely — this is what makes an export round-trip exactly. A game has an `igdb_id` and no `tmdb_id`; a film is the other way round. |
 | `imdb_id` | The outbound link for screen titles; sourced from TMDB, never typed by hand. Blank on games, which link to IGDB instead. |
 | `added_at`, `watched_at` | ISO-8601 dates. |
 | `review` | Free text, whatever you wrote after watching. |

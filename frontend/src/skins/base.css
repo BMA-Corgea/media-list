@@ -477,6 +477,29 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .seen-card .poster { cursor: pointer; }
 .seen-card__line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
+
+/* ── import & export ────────────────────────────────────────────────────────────────── */
+#csv { font: 13px/1.5 var(--font-mono); margin-bottom: 14px; resize: vertical; }
+.import { display: flex; flex-direction: column; gap: 10px; margin: 16px 0 20px; }
+.imp { padding: 11px 14px; border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--radius); background: var(--bg); }
+.imp--matched   { border-left-color: var(--seen); }
+.imp--choose    { border-left-color: var(--star); }
+.imp--unmatched { border-left-color: var(--accent); }
+.imp--duplicate { border-left-color: var(--line-strong); opacity: .72; }
+.imp__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.imp__title { font-weight: 600; }
+.imp .hint { margin: 6px 0 0; }
+.cands { display: flex; gap: 9px; margin-top: 10px; overflow-x: auto; padding-bottom: 4px; }
+.cand {
+  flex: 0 0 96px; display: flex; flex-direction: column; gap: 5px;
+  padding: 5px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: transparent; cursor: pointer; text-align: left;
+}
+.cand:hover { border-color: var(--line-strong); }
+.cand.is-chosen { border-color: var(--accent); background: var(--accent-soft); }
+.cand__art { aspect-ratio: 2 / 3; border-radius: var(--radius-sm); background: var(--surface-2) center/cover no-repeat; }
+.cand__meta { font-size: 11px; line-height: 1.3; color: var(--muted); white-space: pre-line; }
+
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }

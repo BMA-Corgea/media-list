@@ -26,5 +26,7 @@ export const api = {
   titles: (status) => request(`/api/titles${status ? `?status=${status}` : ''}`),
   add: (candidate) => request('/api/titles', { method: 'POST', body: JSON.stringify(candidate) }),
   move: (id, neighbours) => request(`/api/titles/${id}/move`, { method: 'POST', body: JSON.stringify(neighbours) }),
+  importPreview: (text) => request('/api/import/preview', { method: 'POST', body: JSON.stringify({ text }) }),
+  importCommit: (entries) => request('/api/import/commit', { method: 'POST', body: JSON.stringify({ entries }) }),
   remove: (id) => request(`/api/titles/${id}`, { method: 'DELETE' }),
 };

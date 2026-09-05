@@ -3,8 +3,8 @@
   "slug": "review-and-the-seen-archive",
   "type": "feature",
   "title": "Review and the Seen archive",
-  "stage": "gate",
-  "status": "awaiting_approval",
+  "stage": "monitor",
+  "status": "observing",
   "spec": "Marking a title watched asks for 1-5 stars (required) and an optional free-text review, stamps watched_at, sets status=seen and removes it from the queue without deleting it. The Seen archive is a BROWSABLE shelf, not a graveyard: cover art, stars, the date, the review, sortable by date watched and by rating, filterable by kind. Un-watching returns a title to the end of the queue and keeps the review. ACCEPT: rating a title moves it out of the queue and into Seen with its art intact; the archive is worth opening on its own.",
   "pipeline_version": "feature@v1",
   "modifiers": [],
@@ -23,11 +23,11 @@
     "monitor"
   ],
   "passport": [
-    "2026-09-05 gate spec_ready cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
-    "2026-09-05 advanced plan → build · plan on unrecorded",
-    "2026-09-05 gate spec_ready cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
-    "2026-09-05 advanced build → auto-review · build on unrecorded",
-    "2026-09-05 advanced auto-review → gate · auto-review on unrecorded"
+    "2026-09-05 gate accept cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
+    "2026-09-05 advanced uat → release · uat on unrecorded",
+    "2026-09-05 gate accept cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
+    "2026-09-05 gate deploy cleared by policy:unattended",
+    "2026-09-05 advanced release → monitor · release on unrecorded"
   ],
   "assignees": {},
   "links": {
@@ -38,9 +38,9 @@
   ],
   "gates": {
     "spec_ready": true,
-    "merge": false,
-    "accept": false,
-    "deploy": false,
+    "merge": true,
+    "accept": true,
+    "deploy": true,
     "sp_decide": false,
     "ex_decide": false,
     "compliance": false
@@ -93,6 +93,30 @@
       "to": "gate",
       "by": "agent:claude(on-behalf:evan,GA-1)",
       "at": "2026-09-05T04:58:29.145Z"
+    },
+    {
+      "from": "gate",
+      "to": "verify",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:58:29.263Z"
+    },
+    {
+      "from": "verify",
+      "to": "uat",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:58:29.349Z"
+    },
+    {
+      "from": "uat",
+      "to": "release",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:58:29.436Z"
+    },
+    {
+      "from": "release",
+      "to": "monitor",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:58:29.530Z"
     }
   ],
   "receipts": {
@@ -150,6 +174,38 @@
       "fingerprint": "REVIEWED — no defect survived; one was prevented at locate rather than found at test. The seen listing would have inherited the queue's ORDER BY 'queue_position IS NULL, queue_position, added_at', which is meaningless for rows whose queue_position is NULL by definition — spotted while reading T-4's list handler and changed to watched_at DESC before it could ship. Decisions standing with reasons: rating and un-rating both go through T-6's sparse PATCH rather than new verbs, which is what that endpoint was built sparse FOR; picking a star is itself the action so there is no confirm button and therefore no half-finished state; un-watch appends at MAX+10 rather than restoring a stale position because the queue moved on while the title was away; stars and review are deliberately preserved through un-watch; and boolean stars are rejected explicitly because Python treats bools as ints and true would otherwise have passed the 1..5 range check.",
       "by": "agent:claude(on-behalf:evan,GA-1)",
       "at": "2026-09-05T04:58:29.144Z",
+      "model": "unrecorded"
+    },
+    "gate": {
+      "evidence": "MERGE gate, unattended, green: committed on main. No defect outstanding; the ordering issue was prevented at locate. No static-mount change.",
+      "kind": "other",
+      "fingerprint": "MERGE gate, unattended, green: committed on main. No defect outstanding; the ordering issue was prevented at locate. No static-mount change.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:58:29.261Z",
+      "model": "unrecorded"
+    },
+    "verify": {
+      "evidence": "VERIFIED: every AC re-run against live data — validation at the API with five invalid star values plus the missing-rating case, the three-surface absence check, un-watch through both the API and the UI button, and a reload to prove the review persisted. Not covered: Chromium only, no automated runner.",
+      "kind": "other",
+      "fingerprint": "VERIFIED: every AC re-run against live data — validation at the API with five invalid star values plus the missing-rating case, the three-surface absence check, un-watch through both the API and the UI button, and a reload to prove the review persisted. Not covered: Chromium only, no automated runner.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:58:29.348Z",
+      "model": "unrecorded"
+    },
+    "uat": {
+      "evidence": "ACCEPT cleared under GA-1. VISION-CONFORMANCE against T-1: success-shape item 6 says watching something means 1-5 stars and that it then moves into a browsable Seen archive that STAYS WORTH VISITING. The archive was built as a trophy case on that instruction — cover art, stars, dates and the review, sortable by rating and by recency — rather than a hidden status flag. Item 5 (a whole series is one item) is untouched: rating is per title, with no episode granularity anywhere. Against non-goals: no sharing, no recommendations, no wider bind.",
+      "kind": "other",
+      "fingerprint": "ACCEPT cleared under GA-1. VISION-CONFORMANCE against T-1: success-shape item 6 says watching something means 1-5 stars and that it then moves into a browsable Seen archive that STAYS WORTH VISITING. The archive was built as a trophy case on that instruction — cover art, stars, dates and the review, sortable by rating and by recency — rather than a hidden status flag. Item 5 (a whole series is one item) is untouched: rating is per title, with no episode granularity anywhere. Against non-goals: no sharing, no recommendations, no wider bind.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:58:29.435Z",
+      "model": "unrecorded"
+    },
+    "release": {
+      "evidence": "MONITOR — nothing deployed; on-demand loopback. Carried forward: T-10's CSV export must round-trip status, stars, review and watched_at, and its importer must not resurrect a seen row into the queue; T-11 must not add hue literals to the rating or archive blocks. Zero errors at close.",
+      "kind": "other",
+      "fingerprint": "MONITOR — nothing deployed; on-demand loopback. Carried forward: T-10's CSV export must round-trip status, stars, review and watched_at, and its importer must not resurrect a seen row into the queue; T-11 must not add hue literals to the rating or archive blocks. Zero errors at close.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:58:29.528Z",
       "model": "unrecorded"
     }
   }
