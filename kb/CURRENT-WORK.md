@@ -55,3 +55,15 @@ plausible wrong title with the wrong poster and the wrong IMDb id.
 
 T-4 stores it in the `detail` JSON column. T-6 and T-10 need it too, for any refresh or
 re-resolve.
+
+
+## IGDB credentials — half supplied (2026-09-04)
+
+Evan supplied one 30-character value: it is parked in gitignored `.env` as
+`IGDB_PENDING_VALUE`. **IGDB needs two**: `IGDB_CLIENT_ID` and `IGDB_CLIENT_SECRET`, both
+30 characters, both from the same Twitch application at dev.twitch.tv/console.
+
+Twitch returns the identical error (`400 invalid client`) whether the id or the secret is
+wrong, so the supplied value cannot be identified on its own — tested both ways, both
+inconclusive. Once the second value arrives, put them on the right lines and the whole IGDB
+path (T-3 AC1/AC5/AC8, and games in T-4/T-7/T-10) re-runs.
