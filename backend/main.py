@@ -8,10 +8,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sqlite3
 
 from fastapi import APIRouter, Body, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
@@ -22,6 +28,8 @@ from .db import bootstrap, connection, execute, query
 from .sources import anilist, igdb, tmdb
 from .titles import now, serialise
 from .sources.base import SourceError
+
+logger = logging.getLogger(__name__)
 
 api = APIRouter(prefix="/api")
 
@@ -439,30 +447,111 @@ async def _resolve_rows(rows: list[dict], existing: set, note=None) -> list[dict
         lookups.close()
 
 
-@api.post("/import/preview")
-async def import_preview(payload: dict = Body(...)) -> JSONResponse:
-    """Resolve a CSV against the sources and report what WOULD happen. Writes nothing.
+def _ndjson(event: dict) -> str:
+    """One newline-delimited JSON event.
 
-    Preview and commit are separate endpoints on purpose: it makes "nothing is written until
-    you confirm" a structural fact rather than a promise in a docstring.
+    The newline IS the frame, so nothing inside an event may contain a raw one — which is
+    exactly what `json.dumps` guarantees, since it escapes newlines inside strings.
     """
-    rows, problems = csvio.parse(payload.get("text") or "")
-    if not rows:
-        return JSONResponse({"rows": [], "problems": problems, "counts": {}})
+    return json.dumps(event) + "\n"
 
-    existing = {(r["source"], r["source_id"]) for r in query("SELECT source, source_id FROM titles")}
-    resolved = await _resolve_rows(rows, existing)
 
-    counts = {}
+async def _preview_events(rows: list[dict], problems: list[str], existing: set):
+    """The preview as a stream of events, the last of which is the whole answer (T-15 AC3).
+
+    WHY A STREAM AND NOT A JOB ID.
+    This endpoint used to return one JSON blob at the end, so a thousand-row preview was a
+    spinner for as long as it took and there was no way to make it anything else — "the
+    preview stays responsive" is an API change, not a tuning problem. The two candidates were
+    chunked streaming and a job id the client polls. Streaming wins HERE, in a single-user
+    app on loopback, because it needs no server-side job registry: nothing to garbage-collect,
+    nothing stranded by a restart, no second endpoint, and no question of who owns a job. It
+    also gets cancellation for free — closing the stream cancels the searches, so an abandoned
+    preview stops spending upstream quota instead of running to completion for nobody.
+
+    WHAT IT COSTS. Once the first byte is out the status code is already 200, so a failure
+    part-way cannot be an HTTP status any more. It becomes a terminal `error` event, and
+    `frontend/src/api.js` turns that back into a thrown Error — a stream that merely stopped
+    would otherwise be indistinguishable from a successful empty preview.
+
+    The final line is the complete result in the same shape this endpoint returned before.
+    Everything ahead of it is progress a client is free to ignore.
+    """
+    total = len(rows)
+    yield _ndjson({"event": "start", "total": total, "problems": problems})
+
+    ticks: asyncio.Queue = asyncio.Queue()
+    settled = {"rows": 0}
+    outcome: dict = {}
+
+    def note() -> None:
+        settled["rows"] += 1
+        ticks.put_nowait(1)
+
+    async def run() -> None:
+        try:
+            outcome["resolved"] = await _resolve_rows(rows, existing, note)
+        except Exception as error:  # noqa: BLE001 — re-reported as a terminal event, see above
+            outcome["error"] = error
+            logger.exception("import preview failed after %d of %d rows", settled["rows"], total)
+        finally:
+            # The sentinel goes out whatever happened, including cancellation, so the loop
+            # below can never be left waiting on a worker that has stopped.
+            ticks.put_nowait(None)
+
+    worker = asyncio.create_task(run())
+    try:
+        while total:
+            tick = await ticks.get()
+            while tick is not None:  # coalesce a burst of ticks into one line
+                try:
+                    tick = ticks.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+            yield _ndjson({"event": "progress", "resolved": settled["rows"], "total": total})
+            if tick is None:
+                break
+        await worker
+    finally:
+        if not worker.done():
+            worker.cancel()
+
+    if "error" in outcome:
+        yield _ndjson({"event": "error",
+                       "detail": "the preview failed part-way — nothing was written"})
+        return
+
+    resolved = outcome["resolved"]
+    counts: dict = {}
     for entry in resolved:
         counts[entry["state"]] = counts.get(entry["state"], 0) + 1
     # The client lets a human pick a different candidate after this response, and that
     # candidate may itself already be on the list. Without the key set it would count that
     # row as importable and then promise a number the commit cannot deliver.
-    return JSONResponse({
-        "rows": resolved, "problems": problems, "counts": counts,
+    yield _ndjson({
+        "event": "result", "rows": resolved, "problems": problems, "counts": counts,
         "existing": [f"{source}:{source_id}" for source, source_id in sorted(existing)],
     })
+
+
+@api.post("/import/preview")
+async def import_preview(payload: dict = Body(...)) -> StreamingResponse:
+    """Resolve a CSV against the sources and report what WOULD happen. Writes nothing.
+
+    Preview and commit are separate endpoints on purpose: it makes "nothing is written until
+    you confirm" a structural fact rather than a promise in a docstring.
+
+    Answers as an NDJSON stream — `_preview_events` says why, and why not a job id.
+    """
+    rows, problems = csvio.parse(payload.get("text") or "")
+    # Read before the stream opens, so a database failure is still a real HTTP status.
+    existing = set()
+    if rows:
+        existing = {(r["source"], r["source_id"])
+                    for r in query("SELECT source, source_id FROM titles")}
+    return StreamingResponse(
+        _preview_events(rows, problems, existing), media_type="application/x-ndjson"
+    )
 @api.post("/import/commit")
 async def import_commit(payload: dict = Body(...)) -> JSONResponse:
     """Write the confirmed rows. All of them, or none of them.

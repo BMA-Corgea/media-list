@@ -23,6 +23,7 @@ amount of local concurrency can or should get around.
 
 from __future__ import annotations
 
+import json
 import time
 from contextlib import asynccontextmanager
 
@@ -336,3 +337,116 @@ def test_the_same_title_twice_in_one_batch_is_fetched_once_and_added_once(client
     result = client.post("/api/import/commit", json={"entries": entries}).json()
     assert result["counts"] == {"added": 1, "skipped": 19, "failed": 0}
     assert len(client.get("/api/titles").json()) == 1
+
+
+# ── AC3: the preview does not block until the last row ────────────────────────────────────
+
+
+def _stream(client, csv_text: str) -> list[dict]:
+    """Every event the endpoint sent, in order.
+
+    NOT USABLE FOR TIMING, and that is a property of the test client, not of the server.
+    `starlette.testclient.TestClient` runs the app through a portal and collects the WHOLE
+    response body into a `BytesIO` before `iter_lines()` yields its first line — see
+    `_TestClientTransport.handle_request`, which ends with
+    `raw_kwargs["stream"] = httpx.ByteStream(raw_kwargs["stream"].read())`. So every event
+    appears to arrive at the same instant no matter what the server actually did, and a
+    timing assertion made here would be measuring httpx's buffer.
+
+    Same shape of trap as T-13's path-traversal lesson: the in-process client is the one
+    thing that cannot reproduce the property under test. The timing proof therefore drives
+    the generator directly, below; this helper is for ORDER and CONTENT, which it can see.
+    """
+    seen: list[dict] = []
+    with client.stream("POST", "/api/import/preview", json={"text": csv_text}) as response:
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/x-ndjson")
+        for line in response.iter_lines():
+            if line.strip():
+                seen.append(json.loads(line))
+    return seen
+
+
+def test_progress_is_emitted_while_the_resolver_is_still_working(run_async, scale_sources):
+    """AC3 — proven at the layer that does the work, with a real clock on each yield.
+
+    See `_stream` for why this cannot be measured through `TestClient`. `_preview_events` is
+    the async generator the endpoint hands to `StreamingResponse`, so timestamping its yields
+    measures exactly what a browser reading the socket would see, with nothing in between.
+    """
+    from backend import csvio
+    from backend.main import _preview_events
+
+    rows, problems = csvio.parse(generate_csv(ROWS))
+    assert len(rows) == ROWS
+
+    async def drain() -> list[tuple[float, dict]]:
+        started = time.perf_counter()
+        seen: list[tuple[float, dict]] = []
+        async for line in _preview_events(rows, problems, set()):
+            seen.append((time.perf_counter() - started, json.loads(line)))
+        return seen
+
+    seen = run_async(drain())
+    events = [event for _, event in seen]
+
+    assert events[0]["event"] == "start"
+    assert events[0]["total"] == ROWS
+    assert events[-1]["event"] == "result"
+    assert len(events[-1]["rows"]) == ROWS
+
+    progress = [(at, event) for at, event in seen if event["event"] == "progress"]
+    assert progress, "no progress events at all — the preview still blocks until the end"
+
+    finished_at = seen[-1][0]
+    first_progress_at = progress[0][0]
+    assert first_progress_at < finished_at / 2, (
+        f"the first progress event was emitted {first_progress_at:.3f}s in, out of "
+        f"{finished_at:.3f}s total — that is not progress, that is the answer arriving late."
+    )
+    # Enough of them that a browser sees a number that moves, not two updates and a wait.
+    assert len(progress) >= 10, f"only {len(progress)} progress events over {ROWS} rows"
+
+    # It counts up, it never goes backwards, and it lands exactly on the total.
+    counts = [event["resolved"] for _, event in progress]
+    assert counts == sorted(counts)
+    assert counts[-1] == ROWS
+    assert all(event["total"] == ROWS for _, event in progress)
+
+
+def test_the_last_line_of_the_stream_is_the_whole_answer(client, scale_sources):
+    """The progress channel is additive: a client that ignores it gets exactly what it used
+    to get, in the same shape, from the final line alone."""
+    result = _stream(client, repeated_csv(40, 10))[-1]
+
+    assert set(result) == {"event", "rows", "problems", "counts", "existing"}
+    assert result["counts"] == {"matched": 40}
+    assert all(set(row) >= {"row", "state", "chosen", "candidates"} for row in result["rows"])
+
+
+def test_an_empty_file_still_answers_in_the_stream_s_own_shape(client):
+    """The no-rows path went through the same door — a client should not need two parsers."""
+    seen = _stream(client, "")
+    assert [event["event"] for event in seen] == ["start", "result"]
+    assert seen[-1]["rows"] == []
+    assert seen[-1]["problems"] == ["the file is empty"]
+
+
+def test_a_failure_part_way_through_becomes_a_terminal_error_event(client, monkeypatch):
+    """Once the first byte is out, a 500 is no longer available. This is what replaces it.
+
+    Without the terminal event a stream that simply stopped would parse as a successful
+    preview of however many rows happened to make it — a half-resolved list presented as a
+    whole one, which is the failure mode T-10's whole design exists to avoid.
+    """
+    import backend.main as main_module
+
+    async def exploding_search(query: str) -> list[dict]:
+        raise ValueError("upstream client blew up in a way SourceError does not cover")
+
+    monkeypatch.setattr(main_module.tmdb, "search", exploding_search)
+    monkeypatch.setattr(main_module.igdb, "search", exploding_search)
+
+    final = _stream(client, generate_csv(5))[-1]
+    assert final["event"] == "error", f"expected a terminal error event, got {final!r}"
+    assert "nothing was written" in final["detail"]

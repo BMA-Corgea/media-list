@@ -61,12 +61,29 @@ export async function transferView() {
   });
   actions.append(preview, upload, file, Object.assign(document.createElement('span'), { className: 'grow' }), exportBtn);
 
+  // Progress line. Deliberately plain text in an existing class: a thousand-row preview
+  // needs a number that moves, and it needs it without a new component in the skins layer.
+  const progress = Object.assign(document.createElement('p'), { className: 'hint' });
+
   preview.addEventListener('click', async () => {
     preview.disabled = true;
     preview.textContent = 'Resolving…';
-    report.replaceChildren();
+    progress.textContent = 'Reading the file…';
+    report.replaceChildren(progress);
     try {
-      const result = await api.importPreview(text.value);
+      // The preview streams: it says how many rows it has settled while it is still working
+      // on the rest, so the page stays honest about a long import instead of hanging on a
+      // spinner until the last row (T-15 AC3).
+      const result = await api.importPreview(text.value, (event) => {
+        if (event.event === 'start') {
+          progress.textContent = event.total
+            ? `Resolving ${event.total} row${event.total === 1 ? '' : 's'}…`
+            : 'Nothing to resolve.';
+        } else if (event.event === 'progress' && event.total) {
+          progress.textContent = `Resolved ${event.resolved} of ${event.total}…`;
+          preview.textContent = `Resolving… ${Math.round((event.resolved / event.total) * 100)}%`;
+        }
+      });
       renderReport(result);
     } catch (error) {
       report.innerHTML = `<p class="hint bad">${error.message}</p>`;

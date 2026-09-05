@@ -63,10 +63,24 @@ def fake_source(monkeypatch) -> Callable[..., dict]:
 
 
 def preview_result(response) -> dict:
-    """The final `/api/import/preview` payload, however that endpoint frames it.
+    """The final `/api/import/preview` payload, parsed out of its NDJSON progress stream.
 
     One place decides how a preview response is read, so the scale tests and the round-trip
-    tests do not each have to know. Today that is a single JSON body; T-15 gives the endpoint
-    a progress channel, and only this function has to learn about it.
+    tests do not each have to know. T-15 gave the endpoint a progress channel (AC3): it now
+    answers with a stream of newline-delimited events whose LAST line is the complete result,
+    in the same shape the endpoint used to return in one blob.
+
+    A test that cares about the progress itself reads the stream directly with
+    `client.stream(...)` — see `tests/test_import_scale.py`. Everything else wants the answer.
     """
-    return response.json()
+    import json as _json
+
+    events = [_json.loads(line) for line in response.text.splitlines() if line.strip()]
+    assert events, "the preview stream was empty — not even a `start` event"
+    final = events[-1]
+    assert final.get("event") != "error", f"the preview ended in an error event: {final!r}"
+    assert final.get("event") == "result", (
+        f"the preview stream did not end with a result event; last line was {final!r}. "
+        "A truncated stream means the resolver died part-way."
+    )
+    return final

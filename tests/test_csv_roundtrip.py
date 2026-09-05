@@ -11,6 +11,8 @@ from __future__ import annotations
 import csv
 import io
 
+from tests.factories import preview_result
+
 README_EXPORT_HEADER = (
     "title,year,kind,why,status,stars,queue_position,tmdb_id,igdb_id,imdb_id,"
     "added_at,watched_at,review"
@@ -73,7 +75,7 @@ def test_round_trip_preview_recognises_every_row_as_a_duplicate(client, seed):
 
     resp = client.post("/api/import/preview", json={"text": csv_text})
     assert resp.status_code == 200
-    body = resp.json()
+    body = preview_result(resp)
     assert body["problems"] == []
     assert body["counts"] == {"duplicate": 3}
     assert all(row["state"] == "duplicate" for row in body["rows"])
@@ -87,7 +89,7 @@ def test_round_trip_commit_adds_nothing_and_the_list_is_unchanged(client, seed, 
     assert len(before) == 3
 
     csv_text = client.get("/api/export.csv").text
-    preview = client.post("/api/import/preview", json={"text": csv_text}).json()
+    preview = preview_result(client.post("/api/import/preview", json={"text": csv_text}))
 
     # import_commit calls _fetch() for every entry before it ever checks for a duplicate in
     # the database (network calls happen outside the write transaction, by design) -- so
@@ -144,7 +146,7 @@ def test_readmes_own_starter_csv_parses_with_no_problems(client, monkeypatch):
     )
     resp = client.post("/api/import/preview", json={"text": starter_csv})
     assert resp.status_code == 200
-    body = resp.json()
+    body = preview_result(resp)
     assert body["problems"] == []
     assert len(body["rows"]) == 7
     titles = [r["row"]["title"] for r in body["rows"]]
