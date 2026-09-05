@@ -9,6 +9,106 @@ type: reference
 Durable lessons land here as the project runs — one entry per lesson, newest first, each
 citing the ticket/incident it came from.
 
+## A cached WebKit binary is not a working WebKit — two of its runtime libraries aren't in this machine's own Ubuntu repos (T-14)
+
+`~/.cache/ms-playwright/webkit-2336` (the build pinned by `@playwright/test@1.62.1`, chosen
+specifically to reuse this cache — see AC1) is fully downloaded, and `MiniBrowser` is a real
+executable. It still cannot launch:
+
+```
+Error: browserType.launch:
+Host system is missing dependencies to run browsers.
+Please install them with: sudo npx playwright install-deps
+```
+
+`ldd` against the actual GTK library (with `LD_LIBRARY_PATH` set the way Playwright sets it)
+names four missing `.so`s: `libavif.so.16`, `libgstcodecparsers-1.0.so.0`, `libjxl.so.0.8`,
+`libbacktrace.so.0`. This machine is Ubuntu **24.04.2 LTS (noble)** — checked via
+`/etc/os-release`, and worth stating plainly because this is the same machine the owner
+develops on, not a disposable CI box. Downloading the two packages Playwright's own
+`install-deps` list actually names (`libavif16`, `libgstreamer-plugins-bad1.0-0` — fetchable
+with plain `apt-get download`, no root needed, then `dpkg-deb -x` to inspect) resolves
+`libavif.so.16` and `libgstcodecparsers-1.0.so.0` cleanly. The other two do not have a fix
+this simple:
+
+- **`libjxl.so.0.8` does not exist in noble's archives at any component or pocket.**
+  `apt-cache madison libjxl0.7` — the only libjxl shared-lib package Ubuntu ships — tops out
+  at `0.7.0`. This WebKit build was linked against a newer JPEG-XL ABI than Ubuntu 24.04
+  packages at all, full stop, not "not installed yet."
+- **`libbacktrace.so.0` has no providing package in the Ubuntu index either** (no `apt-file`
+  hit, no `libbacktrace0`/`libbacktrace1` candidate — Debian/Ubuntu do not ship GCC's
+  `libbacktrace` as a public shared object the way some other distros do).
+
+The consequence: **`sudo npx playwright install-deps` would not actually fix this host.**
+That command's own package list only covers the two libraries this ticket also resolved by
+hand; it does not mention `libjxl` or `libbacktrace` at all, so running it as root would still
+leave WebKit unable to launch. The honest fix is Microsoft's own `mcr.microsoft.com/playwright`
+Docker image (built on whatever base actually satisfies this WebKit revision) or a newer
+host distro — not a package this repo, or a `sudo` invocation on this machine, can supply.
+
+**Cost of the workaround not taken:** none was applied. `playwright.config.js` still declares
+a `webkit` project (AC5's "wired in" is about the runner, not about this host being able to
+run it), and `scripts/test.sh --browsers` attempts it honestly — it fails loudly with the
+exact Playwright error above rather than being silently skipped. T-14 shipped real, repeatable,
+green coverage on **Chromium and Firefox only** in this environment; WebKit's specs are
+written and will run the moment they execute somewhere with matching system libraries, but
+nobody should read "webkit project exists in the config" as "WebKit passed here." It did not
+run at all. (And when it does run somewhere: it's still a Linux WebKit build, not Safari.)
+
+## Playwright's own inter-event timing, not a browser engine, is what starves a "velocity from the last pointermove" throw (T-14)
+
+The carousel's throw physics (`frontend/src/carousel.js`) compute velocity from ONLY the
+delta since the immediately-previous `pointermove` — `-((event.clientX - lastX) / CARD_STEP)
+* (16 / dt)` — overwritten on every move, never accumulated. That is a reasonable design for
+real input (consecutive samples from one continuous gesture are normally close together in
+time), but it means the THROW's momentum is entirely at the mercy of whichever `pointermove`
+happens to land last before `pointerup`.
+
+A first attempt at a "flick" test used `page.mouse.move(x, y, { steps: 2 })` — deliberately
+imitating a fast, coarse drag. Direct measurement (listening for real `pointermove` timestamps
+via `performance.now()`) showed the gap between the last two synthesized move events swinging
+from ~5ms to over 150ms, **on both Chromium and Firefox**, run to run, for the identical
+gesture. When that final gap happened to be large, the resulting velocity fell under
+`MIN_VELOCITY` (0.02) and the settle loop skipped the momentum branch entirely, snapping
+straight back to the start card — reproduced empirically at roughly a 30-70% failure rate on
+Firefox across repeated real `npx playwright test` runs (7 failures in 10; then 15/15 clean
+after the fix below), fewer observed on Chromium in the same sampling but the same underlying
+jitter was present in its raw timestamps too.
+
+The fix is a TEST change, not an app change: `steps: 1` (one decisive jump, not several
+interpolated ones) gives the gesture exactly one `pointermove`, whose delay since
+`pointerdown` measured consistently around 14-16ms on both engines across 8 trials each —
+compare the 5-150ms spread `steps: 2` produced. `tests/browser/wall.spec.js`'s momentum test
+uses `steps: 1` for exactly this reason. The underlying app code was never touched: this is a
+Playwright-multi-step-drag characteristic, not a defect in either engine's Pointer Events
+implementation, and rewriting the carousel's velocity math to smooth over uneven real-world
+input was out of this ticket's scope (AC4 — a fix belongs in the layer it belongs to, and nothing
+here showed the *shipped* feel was actually broken for a real mouse or trackpad).
+
+## An optimistic UI reorder can look "done" on screen before the request that would actually confirm it has even landed (T-14)
+
+`views/queue.js`'s drag-reorder repaints the list live during the drag itself (`insertBefore`
+on every threshold crossing, inside `pointermove`) — the row visually settles into its new
+slot well before `endDrag` ever calls `commit()` → `api.move()`. A browser-test assertion that
+checks `.qrow` DOM order right after the gesture (even via `expect.poll`) can therefore pass
+on its very first attempt for a reason that has nothing to do with the server: the reorder it
+is "confirming" is the same optimistic DOM state the drag itself already produced, not
+evidence the `POST /titles/{id}/move` request has completed.
+
+This surfaced as a real, reproducible (not one-off) Firefox failure: a trace (`trace: 
+'retain-on-failure'`, extracted with plain `unzip`) showed the move request's own network
+entry recorded with `"status": -1` — the harness's test-teardown closed the page before a
+response the request was still waiting on ever arrived, and the row's server-side position
+was left completely unchanged (byte-identical to its seeded value) despite the DOM already
+showing the "corrected" order. The fix: arm `page.waitForResponse(...)` for the `/move`
+request **before** starting the drag (`Promise.all`, not two sequential `await`s — a response
+that lands in the gap between arming and starting would otherwise be missed), and don't check
+anything else until that response is confirmed `.ok()`. `tests/browser/queue.spec.js`'s
+`dragAndWaitForMove` helper is this pattern. The lesson generalises past this one ticket:
+**for any optimistic-UI surface, wait for the network call that makes a change real, not
+the visual state a client update already produced for free** — the same shape as T-13's
+"a test you have never watched fail is not a regression test," one layer up the stack.
+
 ## A path-traversal test written the obvious way tests nothing — the HTTP client eats the `..` (T-13)
 
 `client.get("/../../.env")` never delivers a `..` to the handler. `TestClient` is built on
