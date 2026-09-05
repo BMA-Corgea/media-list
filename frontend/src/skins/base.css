@@ -275,6 +275,56 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .hint.ok  { color: var(--seen); }
 .hint.bad { color: var(--accent); }
 
+
+/* ── the coverflow ───────────────────────────────────────────────────────────────────
+   Every value below is a token or a geometric constant. No colour literal appears here,
+   which is what lets an alternate skin restyle a surface written after it.              */
+.page--wall { padding-top: 18px; }
+.coverflow {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 430px;
+  perspective: 1400px;
+  outline: none;
+  user-select: none;
+  touch-action: pan-y;              /* horizontal drags are ours; vertical scroll is not */
+}
+.coverflow:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; border-radius: var(--radius); }
+.coverflow__stage {
+  position: relative;
+  width: 100%; height: 400px;
+  transform-style: preserve-3d;
+  cursor: grab;
+}
+.coverflow.is-dragging .coverflow__stage { cursor: grabbing; }
+
+.cf-card {
+  position: absolute; top: 0; left: 50%;
+  width: 250px; margin-left: -125px;
+  transform-origin: center center;
+  will-change: transform, opacity;
+  transition: transform var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out);
+}
+/* While dragging, the cards must track the cursor exactly — a transition here would make
+   the whole thing feel like it is wading through treacle. */
+.coverflow.is-dragging .cf-card { transition: none; }
+.cf-card .poster { box-shadow: var(--shadow); }
+.cf-card.is-centre .poster { box-shadow: var(--shadow-lift); }
+
+.coverflow__step {
+  position: absolute; z-index: 200; top: 50%; margin-top: -20px;
+  font-size: 20px; line-height: 1;
+}
+.coverflow__step:first-child { left: 4px; }
+.coverflow__step:last-child  { right: 4px; }
+
+.caption { text-align: center; margin-top: 26px; min-height: 96px; }
+.caption__line { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.caption__title { margin: 0; font: 600 22px/1.2 var(--font-display); letter-spacing: -.015em; }
+.caption__year { color: var(--muted); }
+.caption__why { margin: 8px auto 0; max-width: 46ch; color: var(--muted); font-style: italic; }
+.caption__pos { margin: 10px 0 0; color: var(--faint); font-size: 12px; letter-spacing: .08em; }
+
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }

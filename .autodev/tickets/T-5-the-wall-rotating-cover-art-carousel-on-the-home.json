@@ -3,8 +3,8 @@
   "slug": "the-wall-rotating-cover-art-carousel-on-the-home",
   "type": "feature",
   "title": "The wall: rotating cover-art carousel on the home page",
-  "stage": "intake",
-  "status": "triage",
+  "stage": "gate",
+  "status": "awaiting_approval",
   "spec": "Home page is a carousel of cover art that is pleasant to just look at — this is the whole reason the project is not a spreadsheet. Rotates BOTH by click-and-drag (pointer events, momentum, snap to nearest) AND by buttons on either side. Cards show poster art, title, year and kind. Clicking a card opens its title page (T-6). Works with 1 title, with 200, and with 0 (a real empty state that invites adding something, not a blank screen). Keyboard arrows step it; respects prefers-reduced-motion by dropping to instant transitions. Fully skin-driven — no hardcoded colours, only tokens from T-2. ACCEPT: drag rotates it under the cursor and settles cleanly; the side buttons step exactly one card; it looks right in every shipped skin.",
   "pipeline_version": "feature@v1",
   "modifiers": [],
@@ -23,7 +23,11 @@
     "monitor"
   ],
   "passport": [
-    "2026-09-05 created as feature \"The wall: rotating cover-art carousel on the home page\" on feature@v1 by agent:claude(on-behalf:evan,session-01PKVMkM)"
+    "2026-09-05 advanced queue → locate · queue on unrecorded",
+    "2026-09-05 advanced locate → plan · locate on unrecorded",
+    "2026-09-05 advanced plan → build · plan on unrecorded",
+    "2026-09-05 advanced build → auto-review · build on unrecorded",
+    "2026-09-05 advanced auto-review → gate · auto-review on unrecorded"
   ],
   "assignees": {},
   "links": {
@@ -33,7 +37,7 @@
     "T-4"
   ],
   "gates": {
-    "spec_ready": false,
+    "spec_ready": true,
     "merge": false,
     "accept": false,
     "deploy": false,
@@ -47,5 +51,106 @@
     "validator_passed": false,
     "attempts": 0
   },
-  "history": []
+  "history": [
+    {
+      "from": "intake",
+      "to": "refine",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:25:01.907Z"
+    },
+    {
+      "from": "refine",
+      "to": "queue",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:25:02.197Z"
+    },
+    {
+      "from": "queue",
+      "to": "locate",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:25:02.279Z"
+    },
+    {
+      "from": "locate",
+      "to": "plan",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:25:02.513Z"
+    },
+    {
+      "from": "plan",
+      "to": "build",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:25:02.808Z"
+    },
+    {
+      "from": "build",
+      "to": "auto-review",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:31:11.275Z"
+    },
+    {
+      "from": "auto-review",
+      "to": "gate",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:31:11.428Z"
+    }
+  ],
+  "receipts": {
+    "intake": {
+      "evidence": "INTAKE: feature, --intent T-1, --after T-4 (shipped). No duplicate. Deliverable is running code.",
+      "kind": "other",
+      "fingerprint": "INTAKE: feature, --intent T-1, --after T-4 (shipped). No duplicate. Deliverable is running code.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:25:01.902Z",
+      "model": "unrecorded"
+    },
+    "refine": {
+      "evidence": "Spec at .autodev/specs/T-5.md, 8 ACs written to be failable rather than descriptive. AC4 names the specific bug this interaction always has — a drag that ends in a click and navigates away — and requires a movement threshold to separate them. AC5 fixes the three list sizes that break carousels: 0 (needs a real empty state), 1 (geometry and looping degenerate), and 200 (the DOM must not hold every card). AC6 and AC7 carry T-2's contracts forward: reduced motion via the shared duration tokens, and zero colour literals so alternate skins keep covering this surface. AC1 requires Pointer Events specifically so mouse and touch are one code path rather than two.",
+      "kind": "other",
+      "fingerprint": "Spec at .autodev/specs/T-5.md, 8 ACs written to be failable rather than descriptive. AC4 names the specific bug this interaction always has — a drag that ends in a click and navigates away — and requires a movement threshold to separate them. AC5 fixes the three list sizes that break carousels: 0 (needs a real empty state), 1 (geometry and looping degenerate), and 200 (the DOM must not hold every card). AC6 and AC7 carry T-2's contracts forward: reduced motion via the shared duration tokens, and zero colour literals so alternate skins keep covering this surface. AC1 requires Pointer Events specifically so mouse and touch are one code path rather than two.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:25:02.030Z",
+      "model": "unrecorded"
+    },
+    "queue": {
+      "evidence": "QUEUED: dispatchable — T-4 shipped. T-6/T-7/T-8 can follow in parallel afterwards.",
+      "kind": "other",
+      "fingerprint": "QUEUED: dispatchable — T-4 shipped. T-6/T-7/T-8 can follow in parallel afterwards.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:25:02.278Z",
+      "model": "unrecorded"
+    },
+    "locate": {
+      "evidence": "LOCATE: everything this ticket needs already exists. GET /api/titles?status=queued returns rows in queue order with local /art/ poster and backdrop paths (T-4). The router from T-4 (frontend/src/router.js) supplies route()/navigate() and the stale-render guard, so #/title/{id} is a one-line registration for T-6 to fill. base.css (T-2) already carries .poster locked to aspect-ratio 2/3, .scrim for text over artwork, .kind, .empty, .btn--round, and the --dur/--ease-out motion tokens with a prefers-reduced-motion override that zeroes them globally — so AC6 is satisfied by USING the tokens rather than by writing a media query here. views/list.js stays as the full grid; this ticket takes over the '' route and the list moves to #/list. Risk found by reading the measured art: IGDB covers are 0.75 and TMDB posters 0.67, so cards must use background-size cover on a fixed 2:3 frame or games will letterbox next to films.",
+      "kind": "other",
+      "fingerprint": "LOCATE: everything this ticket needs already exists. GET /api/titles?status=queued returns rows in queue order with local /art/ poster and backdrop paths (T-4). The router from T-4 (frontend/src/router.js) supplies route()/navigate() and the stale-render guard, so #/title/{id} is a one-line registration for T-6 to fill. base.css (T-2) already carries .poster locked to aspect-ratio 2/3, .scrim for text over artwork, .kind, .empty, .btn--round, and the --dur/--ease-out motion tokens with a prefers-reduced-motion override that zeroes them globally — so AC6 is satisfied by USING the tokens rather than by writing a media query here. views/list.js stays as the full grid; this ticket takes over the '' route and the list moves to #/list. Risk found by reading the measured art: IGDB covers are 0.75 and TMDB posters 0.67, so cards must use background-size cover on a fixed 2:3 frame or games will letterbox next to films.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:25:02.501Z",
+      "model": "unrecorded"
+    },
+    "plan": {
+      "evidence": "PLAN: (1) carousel engine as a standalone module with pointer/keyboard/button input and a windowed render — only the cards near the centre are in the DOM, which is what makes AC5's 200-title case pass; (2) the coverflow transform (rotateY + translateZ + scale by distance from centre) driven entirely by tokens; (3) the centre-card caption over a scrim; (4) home view wiring, empty state, and the #/title/{id} route registration; (5) component classes into base.css, not the view. DECISIONS: a 6px movement threshold separates drag from click (AC4) because anything smaller fires on a shaky mouse and anything larger swallows real clicks; momentum is a simple velocity decay rather than a physics library, since one dependency for one gesture is not worth it; the window is centre +/- 6 cards, which is more than fits on any screen at the widest breakpoint so nothing pops in visibly.",
+      "kind": "other",
+      "fingerprint": "PLAN: (1) carousel engine as a standalone module with pointer/keyboard/button input and a windowed render — only the cards near the centre are in the DOM, which is what makes AC5's 200-title case pass; (2) the coverflow transform (rotateY + translateZ + scale by distance from centre) driven entirely by tokens; (3) the centre-card caption over a scrim; (4) home view wiring, empty state, and the #/title/{id} route registration; (5) component classes into base.css, not the view. DECISIONS: a 6px movement threshold separates drag from click (AC4) because anything smaller fires on a shaky mouse and anything larger swallows real clicks; momentum is a simple velocity decay rather than a physics library, since one dependency for one gesture is not worth it; the window is centre +/- 6 cards, which is more than fits on any screen at the widest breakpoint so nothing pops in visibly.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:25:02.807Z",
+      "model": "unrecorded"
+    },
+    "build": {
+      "evidence": "BUILT AND PROVEN IN A REAL BROWSER — .autodev/evidence/T-5/build.md, with screenshots in nocturne and paperback and at 211 titles. AC1 drag moved 1->5 of 11 with momentum. AC2 one click = exactly one card (1->2, then three more -> 5), no compounding. AC3 arrow steps one, Home returns to 1. AC4 BOTH halves proven in one run: a 360px drag left the URL at #/ (no navigation) and a clean click on the centre card went to #/title/6. AC5 all three sizes: 0 titles gives a real empty state with a CTA and zero carousels; 1 title reads '1 of 1' and both buttons leave it there; 211 titles keeps 7 cards in the DOM at rest and 13 mid-throw, NOT 211, at a sustained 69fps. AC6 reduced motion collapses card transitions to 1e-06s and stepping still works, inherited from T-2's token override with no media query written here. AC7 zero colour literals in the coverflow CSS and 12 var(--) references. AC8 caption carries kind, title, year, the why in quotes and n of N. Zero pageerrors and zero console errors throughout. The 200 synthetic perf rows were removed afterwards and the restoration verified by query — the list is back to its 11 real titles.",
+      "kind": "other",
+      "fingerprint": "BUILT AND PROVEN IN A REAL BROWSER — .autodev/evidence/T-5/build.md, with screenshots in nocturne and paperback and at 211 titles. AC1 drag moved 1->5 of 11 with momentum. AC2 one click = exactly one card (1->2, then three more -> 5), no compounding. AC3 arrow steps one, Home returns to 1. AC4 BOTH halves proven in one run: a 360px drag left the URL at #/ (no navigation) and a clean click on the centre card went to #/title/6. AC5 all three sizes: 0 titles gives a real empty state with a CTA and zero carousels; 1 title reads '1 of 1' and both buttons leave it there; 211 titles keeps 7 cards in the DOM at rest and 13 mid-throw, NOT 211, at a sustained 69fps. AC6 reduced motion collapses card transitions to 1e-06s and stepping still works, inherited from T-2's token override with no media query written here. AC7 zero colour literals in the coverflow CSS and 12 var(--) references. AC8 caption carries kind, title, year, the why in quotes and n of N. Zero pageerrors and zero console errors throughout. The 200 synthetic perf rows were removed afterwards and the restoration verified by query — the list is back to its 11 real titles.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:31:11.273Z",
+      "model": "unrecorded"
+    },
+    "auto-review": {
+      "evidence": "REVIEWED — one defect found and fixed during this ticket, written up in the evidence. CLICKING THE CENTRE CARD DID NOTHING: stage.setPointerCapture() retargets every later pointer event to the capture element, so by pointerup event.target was the stage, and event.target.closest('.cf-card') walks UPWARD and can never find a card from there. The carousel dragged perfectly, the buttons worked, the keyboard worked, and nothing logged an error — it silently refused to open anything. Fixed by remembering the pressed card at pointerdown where the target is still correct; re-verified a click lands on #/title/2. Decisions re-examined and standing: a 6px drag threshold (smaller fires on a shaky mouse, larger swallows real clicks); velocity decay rather than a physics dependency for one gesture; a centre +/-6 render window, wider than any screen shows so nothing pops in visibly; transitions disabled while dragging so cards track the cursor exactly. All component classes went into base.css rather than the view, verified by rendering the populated carousel under both alternate skins.",
+      "kind": "other",
+      "fingerprint": "REVIEWED — one defect found and fixed during this ticket, written up in the evidence. CLICKING THE CENTRE CARD DID NOTHING: stage.setPointerCapture() retargets every later pointer event to the capture element, so by pointerup event.target was the stage, and event.target.closest('.cf-card') walks UPWARD and can never find a card from there. The carousel dragged perfectly, the buttons worked, the keyboard worked, and nothing logged an error — it silently refused to open anything. Fixed by remembering the pressed card at pointerdown where the target is still correct; re-verified a click lands on #/title/2. Decisions re-examined and standing: a 6px drag threshold (smaller fires on a shaky mouse, larger swallows real clicks); velocity decay rather than a physics dependency for one gesture; a centre +/-6 render window, wider than any screen shows so nothing pops in visibly; transitions disabled while dragging so cards track the cursor exactly. All component classes went into base.css rather than the view, verified by rendering the populated carousel under both alternate skins.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:31:11.426Z",
+      "model": "unrecorded"
+    }
+  }
 }
