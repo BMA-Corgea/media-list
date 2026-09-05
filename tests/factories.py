@@ -60,3 +60,13 @@ def fake_source(monkeypatch) -> Callable[..., dict]:
         return record
 
     return register
+
+
+def preview_result(response) -> dict:
+    """The final `/api/import/preview` payload, however that endpoint frames it.
+
+    One place decides how a preview response is read, so the scale tests and the round-trip
+    tests do not each have to know. Today that is a single JSON body; T-15 gives the endpoint
+    a progress channel, and only this function has to learn about it.
+    """
+    return response.json()
