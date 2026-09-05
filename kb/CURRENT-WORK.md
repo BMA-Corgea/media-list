@@ -1,69 +1,39 @@
 # CURRENT WORK — media-list
 
-## Live scope amendment: VIDEO GAMES (Evan, 2026-09-04, mid-build)
+## The branch is finished
 
-Evan added video games to the list after the ticket set was filed. This is IN SCOPE and
-must be carried into every affected ticket's `refine` stage — `respec` is direction-only,
-so the four child tickets below were still at `intake` when the change landed and their
-specs get written with games included rather than amended afterwards.
+**T-1 and all ten child tickets are complete** (2026-09-04). The app runs, and everything
+T-1's success shape promised is built and proven.
 
-**`kind` is now one of: `anime` · `movie` · `live-action` · `game`.**
-
-### The source decision: IGDB, not RAWG
-
-IGDB serves **portrait box art** at roughly 2:3 — the same shape as a film poster — so games
-sit on the same carousel as everything else. RAWG's primary image is a landscape screenshot,
-which would have forced either letterboxed cards or a second card shape on the wall. The wall
-is the product, so the card shape decided the API.
-
-IGDB authenticates through Twitch (`IGDB_CLIENT_ID` + `IGDB_CLIENT_SECRET` → client_credentials
-exchange at `id.twitch.tv/oauth2/token` → bearer valid ~60 days). Token caches under gitignored
-`data/`, refreshes on 401. **Evan has not supplied these yet** — T-3 must degrade to screen-only
-search when they are absent rather than failing.
-
-### What each affected ticket owes
-
-| Ticket | What games change |
+| | |
 | --- | --- |
-| `T-3` | IGDB client alongside TMDB/AniList; merged search results; per-kind details; games have **no `imdb_id`** — schema must allow null without the title page losing its link row |
-| `T-4` | Search spans screen titles and games in one result set; `kind` gains `game` |
-| `T-6` | Outbound link is per kind — IMDb for screen, IGDB game page for games. **UI copy adapts**: a game is *played*, not *watched*, even though the stored status stays `seen` |
-| `T-7` | Filter chips gain `game` |
-| `T-10` | CSV `kind` column accepts `game`; game rows resolve against IGDB |
+| Run it | `./start.sh` → `http://127.0.0.1:7799` |
+| Cold boot | ~9s from a fresh clone: venv, deps, frontend build, database, serving |
+| Screens | wall · queue · wheel · seen · add · import |
+| Sources | TMDB + AniList (screen), IGDB (games), Pexels (chrome only) |
+| Repo | github.com/BMA-Corgea/media-list — **committed locally, never pushed** |
 
-`README.md` and `.env.example` are already updated — the starter CSV, the chatbot prompt and
-the credentials table all cover games as of this amendment.
+## Standing checks — cheap, and each one caught something real
 
-## The board
+| Check | Why it exists |
+| --- | --- |
+| `git check-ignore` on `data/`, `*.db`, `.env` | The privacy boundary is the point of the project |
+| SPA traversal payloads (`../../.env`) whenever routes or static mounts change | T-2's fallback served the real `.env` with live API keys |
+| Grep the built bundle for a string unique to new code | A green Vite build did not catch an unimported module |
+| Colour-literal grep across `base.css` | Keeps every surface re-skinnable by a skin written before it |
+| Chi-square + negative control if `pickIndex` changes | A max-deviation bound was statistically naive and failed a correct picker |
+| Assert **computed** styles, not stylesheet text | An undefined CSS custom property fails silently and looks deliberate |
 
-`T-1` (direction) is complete and routed. Grant **`G-1`** delegates *all* gates on the T-1
-branch to the agent — Evan: *"Just loop through it. Go ahead and build it. I don't need to
-approve anything. Get through all the tickets"*. Future tickets filed under T-1 inherit it;
-it lasts until T-1 reaches a terminal state; `tracker.mjs revoke G-1` ends it early.
+## What is NOT done, and is genuinely open
 
-Build order: **T-2** → T-3 → T-4 → {T-5, T-6, T-7, T-8} → T-9 (after T-6), T-10 (after T-7),
-T-11 (after T-5).
-
-
-## Obligation handed from T-3 to T-4 (2026-09-04)
-
-**A stored TMDB title MUST persist its `media_type`.** TMDB's movie and tv ids are separate
-namespaces — id `30991` is *Cowboy Bebop* as a tv id and *The Curse of the Living Corpse*
-(1964) as a movie id — so `GET /api/details/tmdb/<id>` without a `media_type` cannot be
-answered. T-3 makes it fail loudly with a 400 rather than guess, because guessing returned a
-plausible wrong title with the wrong poster and the wrong IMDb id.
-
-T-4 stores it in the `detail` JSON column. T-6 and T-10 need it too, for any refresh or
-re-resolve.
-
-
-## IGDB credentials — half supplied (2026-09-04)
-
-Evan supplied one 30-character value: it is parked in gitignored `.env` as
-`IGDB_PENDING_VALUE`. **IGDB needs two**: `IGDB_CLIENT_ID` and `IGDB_CLIENT_SECRET`, both
-30 characters, both from the same Twitch application at dev.twitch.tv/console.
-
-Twitch returns the identical error (`400 invalid client`) whether the id or the secret is
-wrong, so the supplied value cannot be identified on its own — tested both ways, both
-inconclusive. Once the second value arrives, put them on the right lines and the whole IGDB
-path (T-3 AC1/AC5/AC8, and games in T-4/T-7/T-10) re-runs.
+- **Never pushed.** 14 commits sit on local `main`. The GitHub repo is public and empty.
+- **Chromium only.** Every browser test used one engine.
+- **No automated test runner.** Every check was a real command, but they live in evidence
+  documents rather than in something CI could run. Worth a ticket now that behaviour is
+  stable enough to be worth freezing.
+- **Large-CSV import is untested.** A chatbot list of thousands of rows would make the
+  per-row search dominate the preview.
+- **Test data on the list.** Akira, Outer Wilds and Attack on Titan were added by import
+  tests; NieR: Automata and Hollow Knight carry test ratings. Real titles, Evan's to curate.
+- `pipelines.wiring` doctor warn is the unused `feature-regulated` pipeline — same benign
+  warn as repo-tour.

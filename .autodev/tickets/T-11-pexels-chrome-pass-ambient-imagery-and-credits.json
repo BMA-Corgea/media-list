@@ -3,8 +3,8 @@
   "slug": "pexels-chrome-pass-ambient-imagery-and-credits",
   "type": "feature",
   "title": "Pexels chrome pass: ambient imagery and credits",
-  "stage": "gate",
-  "status": "awaiting_approval",
+  "stage": "monitor",
+  "status": "complete",
   "spec": "Use the Pexels key to dress the surfaces T-5 built: shelf/kind headers, the empty state, the backdrop behind the carousel, the Seen archive header. AMBIENT IMAGERY ONLY — Pexels is never a source of title artwork; stock photos cannot supply key art and a poster wall made of them is the spreadsheet problem in costume. Follow GLP-Strong-App's pattern: a fetch script that runs ONCE and saves files into the frontend's public tree, plus a credits.json recording creator, license, source URL, photographer URL, alt text and why each image was chosen. These images ARE committed (they are generic and a fresh clone should look right) — unlike title art, which stays in gitignored data/. Images must work under every skin, so they sit behind token-driven scrims rather than dictating colour. ACCEPT: every shipped image has a credits.json row with real attribution; no surface depends on a network call at runtime.",
   "pipeline_version": "feature@v1",
   "modifiers": [],
@@ -23,11 +23,11 @@
     "monitor"
   ],
   "passport": [
-    "2026-09-05 gate spec_ready cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
-    "2026-09-05 advanced plan → build · plan on unrecorded",
-    "2026-09-05 gate spec_ready cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
-    "2026-09-05 advanced build → auto-review · build on unrecorded",
-    "2026-09-05 advanced auto-review → gate · auto-review on unrecorded"
+    "2026-09-05 advanced uat → release · uat on unrecorded",
+    "2026-09-05 gate accept cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
+    "2026-09-05 gate deploy cleared by policy:unattended",
+    "2026-09-05 advanced release → monitor · release on unrecorded",
+    "2026-09-05 pipeline complete at monitor"
   ],
   "assignees": {},
   "links": {
@@ -38,9 +38,9 @@
   ],
   "gates": {
     "spec_ready": true,
-    "merge": false,
-    "accept": false,
-    "deploy": false,
+    "merge": true,
+    "accept": true,
+    "deploy": true,
     "sp_decide": false,
     "ex_decide": false,
     "compliance": false
@@ -48,8 +48,9 @@
   "overrides": {},
   "risk": "low",
   "loop": {
-    "validator_passed": false,
-    "attempts": 0
+    "validator_passed": true,
+    "attempts": 0,
+    "evidence": "MONITOR — nothing deployed; on-demand loopback, no daemon. This closes the T-1 branch. Standing checks for any future work, all cheap and all recorded in the evidence: the colour-literal grep across base.css, the SPA traversal payloads whenever routes or static mounts change, a bundle-grep after every frontend build, the chi-square fairness test if pickIndex is touched, and asserting COMPUTED styles rather than stylesheet text. Zero application errors at close."
   },
   "history": [
     {
@@ -93,6 +94,30 @@
       "to": "gate",
       "by": "agent:claude(on-behalf:evan,GA-1)",
       "at": "2026-09-05T05:10:17.126Z"
+    },
+    {
+      "from": "gate",
+      "to": "verify",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:10:17.274Z"
+    },
+    {
+      "from": "verify",
+      "to": "uat",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:10:17.364Z"
+    },
+    {
+      "from": "uat",
+      "to": "release",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:10:17.454Z"
+    },
+    {
+      "from": "release",
+      "to": "monitor",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:10:17.543Z"
     }
   ],
   "receipts": {
@@ -151,6 +176,47 @@
       "by": "agent:claude(on-behalf:evan,GA-1)",
       "at": "2026-09-05T05:10:17.125Z",
       "model": "unrecorded"
+    },
+    "gate": {
+      "evidence": "MERGE gate, unattended, green: committed on main. The undefined-token defect was fixed and re-verified before the gate, and T-2's traversal regression was re-run because this ticket touched the static tree.",
+      "kind": "other",
+      "fingerprint": "MERGE gate, unattended, green: committed on main. The undefined-token defect was fixed and re-verified before the gate, and T-2's traversal regression was re-run because this ticket touched the static tree.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:10:17.273Z",
+      "model": "unrecorded"
+    },
+    "verify": {
+      "evidence": "VERIFIED: images served locally with zero external requests, credits complete, all three skins asserted by computed colour, the colour-literal rule re-checked across every ticket's CSS at once, the traversal regression re-run, and the no-key path exercised. Not covered: Chromium only; the images are one editorial choice each and Evan may simply not like them, which is taste rather than a defect.",
+      "kind": "other",
+      "fingerprint": "VERIFIED: images served locally with zero external requests, credits complete, all three skins asserted by computed colour, the colour-literal rule re-checked across every ticket's CSS at once, the traversal regression re-run, and the no-key path exercised. Not covered: Chromium only; the images are one editorial choice each and Evan may simply not like them, which is taste rather than a defect.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:10:17.363Z",
+      "model": "unrecorded"
+    },
+    "uat": {
+      "evidence": "ACCEPT cleared under GA-1. VISION-CONFORMANCE against T-1: the games amendment and the data-source rules both state that Pexels is for chrome and never for title artwork, and this ticket holds that line — the three images are a texture, an auditorium and a shelf, none of them pretending to be cover art. T-1's objective that the app be pleasant rather than merely correct is what this ticket serves, and it does so without touching the privacy boundary: these images are committed BECAUSE they are generic, while every cached poster stays gitignored. Against non-goals: nothing added here touches episode tracking, sharing, recommendations or the bind address.",
+      "kind": "other",
+      "fingerprint": "ACCEPT cleared under GA-1. VISION-CONFORMANCE against T-1: the games amendment and the data-source rules both state that Pexels is for chrome and never for title artwork, and this ticket holds that line — the three images are a texture, an auditorium and a shelf, none of them pretending to be cover art. T-1's objective that the app be pleasant rather than merely correct is what this ticket serves, and it does so without touching the privacy boundary: these images are committed BECAUSE they are generic, while every cached poster stays gitignored. Against non-goals: nothing added here touches episode tracking, sharing, recommendations or the bind address.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:10:17.453Z",
+      "model": "unrecorded"
+    },
+    "release": {
+      "evidence": "MONITOR — nothing deployed; on-demand loopback. This closes the T-1 branch. Standing checks for any future work, all cheap and all in the evidence: the colour-literal grep across base.css, the SPA traversal payloads whenever routes or static mounts change, the bundle-grep after a frontend build, the chi-square fairness test if pickIndex is touched, and asserting COMPUTED styles rather than stylesheet text. Zero errors at close.",
+      "kind": "other",
+      "fingerprint": "MONITOR — nothing deployed; on-demand loopback. This closes the T-1 branch. Standing checks for any future work, all cheap and all in the evidence: the colour-literal grep across base.css, the SPA traversal payloads whenever routes or static mounts change, the bundle-grep after a frontend build, the chi-square fairness test if pickIndex is touched, and asserting COMPUTED styles rather than stylesheet text. Zero errors at close.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:10:17.542Z",
+      "model": "unrecorded"
+    },
+    "monitor": {
+      "evidence": "MONITOR — nothing deployed; on-demand loopback, no daemon. This closes the T-1 branch. Standing checks for any future work, all cheap and all recorded in the evidence: the colour-literal grep across base.css, the SPA traversal payloads whenever routes or static mounts change, a bundle-grep after every frontend build, the chi-square fairness test if pickIndex is touched, and asserting COMPUTED styles rather than stylesheet text. Zero application errors at close.",
+      "kind": "other",
+      "fingerprint": "MONITOR — nothing deployed; on-demand loopback, no daemon. This closes the T-1 branch. Standing checks for any future work, all cheap and all recorded in the evidence: the colour-literal grep across base.css, the SPA traversal payloads whenever routes or static mounts change, a bundle-grep after every frontend build, the chi-square fairness test if pickIndex is touched, and asserting COMPUTED styles rather than stylesheet text. Zero application errors at close.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T05:10:33.656Z",
+      "model": "unrecorded"
     }
-  }
+  },
+  "completed": true
 }
