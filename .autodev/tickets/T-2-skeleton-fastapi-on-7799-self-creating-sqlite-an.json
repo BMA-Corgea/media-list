@@ -1,0 +1,153 @@
+{
+  "id": "T-2",
+  "slug": "skeleton-fastapi-on-7799-self-creating-sqlite-an",
+  "type": "feature",
+  "title": "Skeleton: FastAPI on 7799, self-creating SQLite, and the skin contract",
+  "stage": "gate",
+  "status": "awaiting_approval",
+  "spec": "FastAPI app boots on 127.0.0.1:7799 (MEDIA_LIST_HOST/MEDIA_LIST_PORT), config read from .env, start.sh frees nothing (loopback, private data) and runs uvicorn. SQLite at data/media-list.db CREATES ITSELF on first startup — schema for titles (id, tmdb_id, imdb_id, anilist_id, title, year, kind, summary, poster_path, backdrop_path, genres, why, status, stars, review, queue_position, added_at, watched_at); no migration step, no server to install; second startup is a no-op. Vite frontend builds and is served by the backend; 5799 for vite dev. Skin contract ported from repo-tour: skins/base.css owns bare :root and carries tokens PLUS the component layer, each alternate is one file scoped entirely under :root[data-theme=NAME], one registry row per skin, switcher applies pre-paint from localStorage so there is no flash. Ship base + at least two alternates. ACCEPT: delete data/ and the app rebuilds it on boot; switching skin restyles every surface with no page reload and survives refresh.",
+  "pipeline_version": "feature@v1",
+  "modifiers": [],
+  "pipeline": [
+    "intake",
+    "refine",
+    "queue",
+    "locate",
+    "plan",
+    "build",
+    "auto-review",
+    "gate",
+    "verify",
+    "uat",
+    "release",
+    "monitor"
+  ],
+  "passport": [
+    "2026-09-05 advanced queue → locate · queue on unrecorded",
+    "2026-09-05 advanced locate → plan · locate on unrecorded",
+    "2026-09-05 advanced plan → build · plan on unrecorded",
+    "2026-09-05 advanced build → auto-review · build on unrecorded",
+    "2026-09-05 advanced auto-review → gate · auto-review on unrecorded"
+  ],
+  "assignees": {},
+  "links": {
+    "intent": "T-1"
+  },
+  "gates": {
+    "spec_ready": true,
+    "merge": false,
+    "accept": false,
+    "deploy": false,
+    "sp_decide": false,
+    "ex_decide": false,
+    "compliance": false
+  },
+  "overrides": {},
+  "risk": "medium",
+  "loop": {
+    "validator_passed": false,
+    "attempts": 0
+  },
+  "history": [
+    {
+      "from": "intake",
+      "to": "refine",
+      "by": "agent:claude(on-behalf:evan,session-01PKVMkM)",
+      "at": "2026-09-05T03:40:05.786Z"
+    },
+    {
+      "from": "refine",
+      "to": "queue",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T03:42:26.800Z"
+    },
+    {
+      "from": "queue",
+      "to": "locate",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T03:43:16.410Z"
+    },
+    {
+      "from": "locate",
+      "to": "plan",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T03:43:16.509Z"
+    },
+    {
+      "from": "plan",
+      "to": "build",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T03:43:41.672Z"
+    },
+    {
+      "from": "build",
+      "to": "auto-review",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T03:51:51.724Z"
+    },
+    {
+      "from": "auto-review",
+      "to": "gate",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T03:54:06.132Z"
+    }
+  ],
+  "receipts": {
+    "intake": {
+      "evidence": "INTAKE: T-2 exists as a feature titled 'Skeleton: FastAPI on 7799, self-creating SQLite, and the skin contract', sourced from Evan's intake conversation 2026-09-04 and routed under direction T-1 via --intent. No open duplicate — it is the only foundation ticket on the board and the other ten tickets all depend on it or on its descendants. Type is correct: the deliverable is running code, not a finding.",
+      "kind": "other",
+      "fingerprint": "INTAKE: T-2 exists as a feature titled 'Skeleton: FastAPI on 7799, self-creating SQLite, and the skin contract', sourced from Evan's intake conversation 2026-09-04 and routed under direction T-1 via --intent. No open duplicate — it is the only foundation ticket on the board and the other ten tickets all depend on it or on its descendants. Type is correct: the deliverable is running code, not a finding.",
+      "by": "agent:claude(on-behalf:evan,session-01PKVMkM)",
+      "at": "2026-09-05T03:40:05.784Z",
+      "model": "unrecorded"
+    },
+    "refine": {
+      "evidence": "Spec artifact at .autodev/specs/T-2.md with 8 testable acceptance criteria, each stating its own verification: AC2 is 'delete data/ and reboot', AC3 is insert/restart/read-back, AC6 is 'adding a skin costs one file plus one row and nothing else', AC7 is set-skin/hard-refresh/observe-no-flash, AC8 is git status clean of data|db|.env after a boot that wrote the DB. Scope explicitly bounds OUT every metadata call and every surface (they are T-3 through T-11). Context cites PROJECT_PORTS.md for the 7799 reservation and repo-tour's src/skins.ts + assets/skins/base.css for the skin contract. Schema in AC4 already accommodates the 2026-09-04 games amendment: source/source_id pair, nullable imdb_id, kind including 'game'.",
+      "kind": "other",
+      "fingerprint": "Spec artifact at .autodev/specs/T-2.md with 8 testable acceptance criteria, each stating its own verification: AC2 is 'delete data/ and reboot', AC3 is insert/restart/read-back, AC6 is 'adding a skin costs one file plus one row and nothing else', AC7 is set-skin/hard-refresh/observe-no-flash, AC8 is git status clean of data|db|.env after a boot that wrote the DB. Scope explicitly bounds OUT every metadata call and every surface (they are T-3 through T-11). Context cites PROJECT_PORTS.md for the 7799 reservation and repo-tour's src/skins.ts + assets/skins/base.css for the skin contract. Schema in AC4 already accommodates the 2026-09-04 games amendment: source/source_id pair, nullable imdb_id, kind including 'game'.",
+      "by": "agent:claude(on-behalf:evan,session-01PKVMkM)",
+      "at": "2026-09-05T03:40:48.291Z",
+      "model": "unrecorded"
+    },
+    "queue": {
+      "evidence": "QUEUED: priority is TOP of the branch — T-2 is the only dispatchable ticket on the board (tracker ready confirms it: every other ticket has an unshipped --after). Nothing competes with it, so priority is unambiguous rather than arbitrary. Marked ready: spec artifact exists at .autodev/specs/T-2.md, spec_ready gate cleared under GA-1, no blockers, no dependencies.",
+      "kind": "other",
+      "fingerprint": "QUEUED: priority is TOP of the branch — T-2 is the only dispatchable ticket on the board (tracker ready confirms it: every other ticket has an unshipped --after). Nothing competes with it, so priority is unambiguous rather than arbitrary. Marked ready: spec artifact exists at .autodev/specs/T-2.md, spec_ready gate cleared under GA-1, no blockers, no dependencies.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T03:43:16.404Z",
+      "model": "unrecorded"
+    },
+    "locate": {
+      "evidence": "LOCATE artifact at .autodev/locates/T-2.md. Repo is greenfield — nothing tracked but this session's scaffolding — so the locate names (a) the four existing files this ticket must not break, with README.md's promises called out as binding, (b) the out-of-repo reference material that settles the patterns: repo-tour's src/skins.ts and assets/skins/{base,jrpg}.css for the skin contract, PROJECT_PORTS.md for the 7799 reservation and the do-not-free-the-port stance, (c) the exact 14 files this ticket creates, and (d) three concrete risks found by reading that reference code: Vite defers type=module so the pre-paint skin script must be an inline classic script or AC7 flashes; sqlite3.connect does not create a missing parent dir so AC2's delete-data/-and-reboot fails without mkdir; and the SPA catch-all must exclude /api or it swallows T-3's endpoints.",
+      "kind": "other",
+      "fingerprint": "LOCATE artifact at .autodev/locates/T-2.md. Repo is greenfield — nothing tracked but this session's scaffolding — so the locate names (a) the four existing files this ticket must not break, with README.md's promises called out as binding, (b) the out-of-repo reference material that settles the patterns: repo-tour's src/skins.ts and assets/skins/{base,jrpg}.css for the skin contract, PROJECT_PORTS.md for the 7799 reservation and the do-not-free-the-port stance, (c) the exact 14 files this ticket creates, and (d) three concrete risks found by reading that reference code: Vite defers type=module so the pre-paint skin script must be an inline classic script or AC7 flashes; sqlite3.connect does not create a missing parent dir so AC2's delete-data/-and-reboot fails without mkdir; and the SPA catch-all must exclude /api or it swallows T-3's endpoints.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T03:43:16.507Z",
+      "model": "unrecorded"
+    },
+    "plan": {
+      "evidence": "PLAN artifact at .autodev/plans/T-2.md: 10 ordered steps, each naming the files it touches and the acceptance criterion that verifies it, sequenced so nothing depends on an unverified step. All three risks from the locate are assigned to specific steps (mkdir at step 2, inline classic pre-paint script at step 6, /api-excluding SPA fallback at step 8). Three build decisions recorded with reasons: CREATE TABLE IF NOT EXISTS as the entire migration story per the spec's no-framework constraint (with a user_version pragma so a later ticket can migrate); gap-tolerant queue_position because T-7's acceptance criteria already promise gap tolerance; and nocturne+paperback as the two alternates specifically so the contract is proven in BOTH brightnesses rather than only dark.",
+      "kind": "other",
+      "fingerprint": "PLAN artifact at .autodev/plans/T-2.md: 10 ordered steps, each naming the files it touches and the acceptance criterion that verifies it, sequenced so nothing depends on an unverified step. All three risks from the locate are assigned to specific steps (mkdir at step 2, inline classic pre-paint script at step 6, /api-excluding SPA fallback at step 8). Three build decisions recorded with reasons: CREATE TABLE IF NOT EXISTS as the entire migration story per the spec's no-framework constraint (with a user_version pragma so a later ticket can migrate); gap-tolerant queue_position because T-7's acceptance criteria already promise gap tolerance; and nocturne+paperback as the two alternates specifically so the contract is proven in BOTH brightnesses rather than only dark.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T03:43:41.667Z",
+      "model": "unrecorded"
+    },
+    "build": {
+      "evidence": "BUILT AND PROVEN — evidence at .autodev/evidence/T-2/build.md, real command output for all 8 ACs plus a constraints check, with two skin screenshots. Highlights: AC2 'rm -rf data' then boot recreated the DB; AC4 21/21 spec columns with imdb_id nullable for games, and four bad inserts (kind=book, source=rawg, stars=9, duplicate source pair) each refused; AC5 six-path curl sweep proved /api and /art return JSON/404 rather than being swallowed by the SPA catch-all; AC6 proven by ADDING a throwaway skin as one CSS file plus one registry row, watching it appear in the switcher and repaint the body magenta in Chromium, then reverting to zero residue; AC7 proven deterministically by holding the stylesheet 600ms and observing data-theme already set while styleSheets.length was 0; AC8 git check-ignore plus a dry git add showed no .env/.db/data path could be committed. Zero application pageerrors or console errors. Gaps stated: Chromium only, start.sh end-to-end is verify's job, no automated runner yet.",
+      "kind": "other",
+      "fingerprint": "BUILT AND PROVEN — evidence at .autodev/evidence/T-2/build.md, real command output for all 8 ACs plus a constraints check, with two skin screenshots. Highlights: AC2 'rm -rf data' then boot recreated the DB; AC4 21/21 spec columns with imdb_id nullable for games, and four bad inserts (kind=book, source=rawg, stars=9, duplicate source pair) each refused; AC5 six-path curl sweep proved /api and /art return JSON/404 rather than being swallowed by the SPA catch-all; AC6 proven by ADDING a throwaway skin as one CSS file plus one registry row, watching it appear in the switcher and repaint the body magenta in Chromium, then reverting to zero residue; AC7 proven deterministically by holding the stylesheet 600ms and observing data-theme already set while styleSheets.length was 0; AC8 git check-ignore plus a dry git add showed no .env/.db/data path could be committed. Zero application pageerrors or console errors. Gaps stated: Chromium only, start.sh end-to-end is verify's job, no automated runner yet.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T03:51:51.724Z",
+      "model": "unrecorded"
+    },
+    "auto-review": {
+      "evidence": "REVIEWED — 3 findings, all in this ticket's own code, all fixed and re-verified. Full write-up at .autodev/evidence/T-2/review.md. (1) SECURITY, confirmed exploit not theory: the SPA fallback did 'dist / full_path' with no containment check, so curl --path-as-is on /../../.env returned 200 with bytes sha256-identical to the real .env carrying non-empty TMDB_API_KEY and PEXELS_API_KEY. Browsers normalise '..' so every browser test passed; non-browser clients do not. Loopback-only and nothing left the machine, so no rotation needed. Fixed by resolving the candidate and requiring dist_root containment (dist_root resolved once, so symlinks cannot widen it); re-tested 5 traversal payloads, all now return the SPA shell, while hashed CSS, /api/health and / are unaffected. (2) bootstrap() leaked a connection per call because 'with sqlite3.connect()' manages the transaction, not the connection; fixed with try/finally close, re-verified by counting /proc/self/fd across 50 bootstraps — 4 to 4, zero leaked. (3) WAL sidecars (-wal/-shm) hold uncheckpointed committed rows but were protected only by the data/ rule, so a relocated MEDIA_LIST_DB would thin the privacy boundary; added explicit ignores, re-verified with git check-ignore. Three further items considered and deliberately left with reasons recorded: per-call connections, import-time bootstrap, and start.sh's grep/cut .env read.",
+      "kind": "other",
+      "fingerprint": "REVIEWED — 3 findings, all in this ticket's own code, all fixed and re-verified. Full write-up at .autodev/evidence/T-2/review.md. (1) SECURITY, confirmed exploit not theory: the SPA fallback did 'dist / full_path' with no containment check, so curl --path-as-is on /../../.env returned 200 with bytes sha256-identical to the real .env carrying non-empty TMDB_API_KEY and PEXELS_API_KEY. Browsers normalise '..' so every browser test passed; non-browser clients do not. Loopback-only and nothing left the machine, so no rotation needed. Fixed by resolving the candidate and requiring dist_root containment (dist_root resolved once, so symlinks cannot widen it); re-tested 5 traversal payloads, all now return the SPA shell, while hashed CSS, /api/health and / are unaffected. (2) bootstrap() leaked a connection per call because 'with sqlite3.connect()' manages the transaction, not the connection; fixed with try/finally close, re-verified by counting /proc/self/fd across 50 bootstraps — 4 to 4, zero leaked. (3) WAL sidecars (-wal/-shm) hold uncheckpointed committed rows but were protected only by the data/ rule, so a relocated MEDIA_LIST_DB would thin the privacy boundary; added explicit ignores, re-verified with git check-ignore. Three further items considered and deliberately left with reasons recorded: per-call connections, import-time bootstrap, and start.sh's grep/cut .env read.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T03:54:06.129Z",
+      "model": "unrecorded"
+    }
+  }
+}

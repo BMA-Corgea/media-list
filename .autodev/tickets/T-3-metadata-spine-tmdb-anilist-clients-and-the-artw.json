@@ -1,0 +1,51 @@
+{
+  "id": "T-3",
+  "slug": "metadata-spine-tmdb-anilist-clients-and-the-artw",
+  "type": "feature",
+  "title": "Metadata spine: TMDB + AniList clients and the artwork cache",
+  "stage": "intake",
+  "status": "triage",
+  "spec": "GET /api/search?q= returns ranked candidates from TMDB multi-search: title, year, kind (anime/movie/live-action), overview, poster and backdrop URLs, tmdb_id, media_type. Kind inference: TMDB genre 16 + origin JP => anime, else tv => live-action, else movie. GET /api/titles/{tmdb_id}/details enriches with imdb_id (from TMDB external_ids — IMDb has no free API, this is the only source) and, for anime, AniList (studio, season, episode count, romaji + English titles; no key needed). Artwork is DOWNLOADED to data/art/ and served by the backend, never hotlinked and never placed in Vite public/ — data/ is gitignored because cached art reveals the list. Cache is content-addressed and re-fetch is a no-op. Handle rate limits and a missing/invalid key with a real error, not a crash. ACCEPT: searching 'cowboy bebop' returns the 1998 anime, the 2021 live-action and the 2001 film as three distinct candidates with distinct posters; details on the 1998 one yields an imdb_id and AniList studio data.",
+  "pipeline_version": "feature@v1",
+  "modifiers": [],
+  "pipeline": [
+    "intake",
+    "refine",
+    "queue",
+    "locate",
+    "plan",
+    "build",
+    "auto-review",
+    "gate",
+    "verify",
+    "uat",
+    "release",
+    "monitor"
+  ],
+  "passport": [
+    "2026-09-05 created as feature \"Metadata spine: TMDB + AniList clients and the artwork cache\" on feature@v1 by agent:claude(on-behalf:evan,session-01PKVMkM)"
+  ],
+  "assignees": {},
+  "links": {
+    "intent": "T-1"
+  },
+  "depends_on": [
+    "T-2"
+  ],
+  "gates": {
+    "spec_ready": false,
+    "merge": false,
+    "accept": false,
+    "deploy": false,
+    "sp_decide": false,
+    "ex_decide": false,
+    "compliance": false
+  },
+  "overrides": {},
+  "risk": "medium",
+  "loop": {
+    "validator_passed": false,
+    "attempts": 0
+  },
+  "history": []
+}

@@ -1,0 +1,51 @@
+{
+  "id": "T-4",
+  "slug": "add-a-title-search-and-pick",
+  "type": "feature",
+  "title": "Add a title: search-and-pick",
+  "stage": "intake",
+  "status": "triage",
+  "spec": "The primary success criterion. A search field; typing shows candidate cards WITH POSTERS as you type (debounced); clicking one adds it — title, year, kind, summary, artwork, IMDb link and genres all populated from T-3 with zero typing. Optional 'why' field, free text, one line. New titles append to the end of the queue with status=queued. Duplicate tmdb_id is refused with a clear message pointing at the existing entry. HARD RULE: no field for summary, poster URL, or IMDb link is ever presented to the user — if a human is typing metadata this ticket has failed. ACCEPT: adding Cowboy Bebop takes one search and one click, and the resulting record carries poster, backdrop, summary, year, kind and a working IMDb link.",
+  "pipeline_version": "feature@v1",
+  "modifiers": [],
+  "pipeline": [
+    "intake",
+    "refine",
+    "queue",
+    "locate",
+    "plan",
+    "build",
+    "auto-review",
+    "gate",
+    "verify",
+    "uat",
+    "release",
+    "monitor"
+  ],
+  "passport": [
+    "2026-09-05 created as feature \"Add a title: search-and-pick\" on feature@v1 by agent:claude(on-behalf:evan,session-01PKVMkM)"
+  ],
+  "assignees": {},
+  "links": {
+    "intent": "T-1"
+  },
+  "depends_on": [
+    "T-3"
+  ],
+  "gates": {
+    "spec_ready": false,
+    "merge": false,
+    "accept": false,
+    "deploy": false,
+    "sp_decide": false,
+    "ex_decide": false,
+    "compliance": false
+  },
+  "overrides": {},
+  "risk": "medium",
+  "loop": {
+    "validator_passed": false,
+    "attempts": 0
+  },
+  "history": []
+}

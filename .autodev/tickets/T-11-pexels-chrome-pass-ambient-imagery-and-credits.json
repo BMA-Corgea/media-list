@@ -1,0 +1,51 @@
+{
+  "id": "T-11",
+  "slug": "pexels-chrome-pass-ambient-imagery-and-credits",
+  "type": "feature",
+  "title": "Pexels chrome pass: ambient imagery and credits",
+  "stage": "intake",
+  "status": "triage",
+  "spec": "Use the Pexels key to dress the surfaces T-5 built: shelf/kind headers, the empty state, the backdrop behind the carousel, the Seen archive header. AMBIENT IMAGERY ONLY — Pexels is never a source of title artwork; stock photos cannot supply key art and a poster wall made of them is the spreadsheet problem in costume. Follow GLP-Strong-App's pattern: a fetch script that runs ONCE and saves files into the frontend's public tree, plus a credits.json recording creator, license, source URL, photographer URL, alt text and why each image was chosen. These images ARE committed (they are generic and a fresh clone should look right) — unlike title art, which stays in gitignored data/. Images must work under every skin, so they sit behind token-driven scrims rather than dictating colour. ACCEPT: every shipped image has a credits.json row with real attribution; no surface depends on a network call at runtime.",
+  "pipeline_version": "feature@v1",
+  "modifiers": [],
+  "pipeline": [
+    "intake",
+    "refine",
+    "queue",
+    "locate",
+    "plan",
+    "build",
+    "auto-review",
+    "gate",
+    "verify",
+    "uat",
+    "release",
+    "monitor"
+  ],
+  "passport": [
+    "2026-09-05 created as feature \"Pexels chrome pass: ambient imagery and credits\" on feature@v1 by agent:claude(on-behalf:evan,session-01PKVMkM)"
+  ],
+  "assignees": {},
+  "links": {
+    "intent": "T-1"
+  },
+  "depends_on": [
+    "T-5"
+  ],
+  "gates": {
+    "spec_ready": false,
+    "merge": false,
+    "accept": false,
+    "deploy": false,
+    "sp_decide": false,
+    "ex_decide": false,
+    "compliance": false
+  },
+  "overrides": {},
+  "risk": "low",
+  "loop": {
+    "validator_passed": false,
+    "attempts": 0
+  },
+  "history": []
+}

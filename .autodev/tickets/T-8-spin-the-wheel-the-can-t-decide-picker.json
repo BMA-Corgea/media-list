@@ -1,0 +1,51 @@
+{
+  "id": "T-8",
+  "slug": "spin-the-wheel-the-can-t-decide-picker",
+  "type": "feature",
+  "title": "Spin the wheel: the can't-decide picker",
+  "stage": "intake",
+  "status": "triage",
+  "spec": "A wheel of the queued titles that spins and lands on one. THE ANIMATION QUALITY IS THE REQUIREMENT, not polish to be dropped if time runs short — Evan asked for it by name. Real easing (fast start, long decelerating tail), a landing that feels earned rather than snapped, and a reveal of the chosen title that leads to its page. Optionally scoped by kind filter. Honest randomness — no weighting toward the front of the queue unless stated. Respects prefers-reduced-motion with an instant honest pick. Skin-driven colours. ACCEPT: it is fun to spin twice in a row; the result is genuinely uniform across the eligible set; it degrades correctly with fewer than 3 titles.",
+  "pipeline_version": "feature@v1",
+  "modifiers": [],
+  "pipeline": [
+    "intake",
+    "refine",
+    "queue",
+    "locate",
+    "plan",
+    "build",
+    "auto-review",
+    "gate",
+    "verify",
+    "uat",
+    "release",
+    "monitor"
+  ],
+  "passport": [
+    "2026-09-05 created as feature \"Spin the wheel: the can't-decide picker\" on feature@v1 by agent:claude(on-behalf:evan,session-01PKVMkM)"
+  ],
+  "assignees": {},
+  "links": {
+    "intent": "T-1"
+  },
+  "depends_on": [
+    "T-4"
+  ],
+  "gates": {
+    "spec_ready": false,
+    "merge": false,
+    "accept": false,
+    "deploy": false,
+    "sp_decide": false,
+    "ex_decide": false,
+    "compliance": false
+  },
+  "overrides": {},
+  "risk": "medium",
+  "loop": {
+    "validator_passed": false,
+    "attempts": 0
+  },
+  "history": []
+}

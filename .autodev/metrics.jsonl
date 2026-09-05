@@ -1,0 +1,11 @@
+{"ts":"2026-09-05T03:29:38.164Z","kind":"stage.advanced","ticket":"T-1","from":"dir-goals","to":"dir-clarify"}
+{"ts":"2026-09-05T03:30:47.860Z","kind":"stage.advanced","ticket":"T-1","from":"dir-clarify","to":"dir-scope"}
+{"ts":"2026-09-05T03:36:25.240Z","kind":"stage.advanced","ticket":"T-1","from":"dir-scope","to":"dir-route"}
+{"ts":"2026-09-05T03:37:35.754Z","kind":"pipeline.complete","ticket":"T-1","at":"dir-route"}
+{"ts":"2026-09-05T03:40:05.787Z","kind":"stage.advanced","ticket":"T-2","from":"intake","to":"refine"}
+{"ts":"2026-09-05T03:42:26.801Z","kind":"stage.advanced","ticket":"T-2","from":"refine","to":"queue"}
+{"ts":"2026-09-05T03:43:16.410Z","kind":"stage.advanced","ticket":"T-2","from":"queue","to":"locate"}
+{"ts":"2026-09-05T03:43:16.510Z","kind":"stage.advanced","ticket":"T-2","from":"locate","to":"plan"}
+{"ts":"2026-09-05T03:43:41.673Z","kind":"stage.advanced","ticket":"T-2","from":"plan","to":"build"}
+{"ts":"2026-09-05T03:51:51.725Z","kind":"stage.advanced","ticket":"T-2","from":"build","to":"auto-review"}
+{"ts":"2026-09-05T03:54:06.133Z","kind":"stage.advanced","ticket":"T-2","from":"auto-review","to":"gate"}

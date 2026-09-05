@@ -1,0 +1,51 @@
+{
+  "id": "T-9",
+  "slug": "review-and-the-seen-archive",
+  "type": "feature",
+  "title": "Review and the Seen archive",
+  "stage": "intake",
+  "status": "triage",
+  "spec": "Marking a title watched asks for 1-5 stars (required) and an optional free-text review, stamps watched_at, sets status=seen and removes it from the queue without deleting it. The Seen archive is a BROWSABLE shelf, not a graveyard: cover art, stars, the date, the review, sortable by date watched and by rating, filterable by kind. Un-watching returns a title to the end of the queue and keeps the review. ACCEPT: rating a title moves it out of the queue and into Seen with its art intact; the archive is worth opening on its own.",
+  "pipeline_version": "feature@v1",
+  "modifiers": [],
+  "pipeline": [
+    "intake",
+    "refine",
+    "queue",
+    "locate",
+    "plan",
+    "build",
+    "auto-review",
+    "gate",
+    "verify",
+    "uat",
+    "release",
+    "monitor"
+  ],
+  "passport": [
+    "2026-09-05 created as feature \"Review and the Seen archive\" on feature@v1 by agent:claude(on-behalf:evan,session-01PKVMkM)"
+  ],
+  "assignees": {},
+  "links": {
+    "intent": "T-1"
+  },
+  "depends_on": [
+    "T-6"
+  ],
+  "gates": {
+    "spec_ready": false,
+    "merge": false,
+    "accept": false,
+    "deploy": false,
+    "sp_decide": false,
+    "ex_decide": false,
+    "compliance": false
+  },
+  "overrides": {},
+  "risk": "medium",
+  "loop": {
+    "validator_passed": false,
+    "attempts": 0
+  },
+  "history": []
+}

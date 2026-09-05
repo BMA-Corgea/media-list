@@ -1,0 +1,51 @@
+{
+  "id": "T-6",
+  "slug": "title-page-hero-art-summary-imdb-link-and-your-w",
+  "type": "feature",
+  "title": "Title page: hero art, summary, IMDb link, and your why",
+  "stage": "intake",
+  "status": "triage",
+  "spec": "A page per title: backdrop as hero, poster, title (and romaji/English both, for anime), year, kind, genres, runtime or episode count, the summary, and the 'why' Evan recorded when adding it. Outbound IMDb link built from imdb_id. Actions: mark watched (hands off to T-9), edit why, remove from list, move to top of queue. Reads as a page worth landing on, not a data dump. ACCEPT: every field present renders, every field absent degrades without a hole in the layout, and the IMDb link opens the right title.",
+  "pipeline_version": "feature@v1",
+  "modifiers": [],
+  "pipeline": [
+    "intake",
+    "refine",
+    "queue",
+    "locate",
+    "plan",
+    "build",
+    "auto-review",
+    "gate",
+    "verify",
+    "uat",
+    "release",
+    "monitor"
+  ],
+  "passport": [
+    "2026-09-05 created as feature \"Title page: hero art, summary, IMDb link, and your why\" on feature@v1 by agent:claude(on-behalf:evan,session-01PKVMkM)"
+  ],
+  "assignees": {},
+  "links": {
+    "intent": "T-1"
+  },
+  "depends_on": [
+    "T-4"
+  ],
+  "gates": {
+    "spec_ready": false,
+    "merge": false,
+    "accept": false,
+    "deploy": false,
+    "sp_decide": false,
+    "ex_decide": false,
+    "compliance": false
+  },
+  "overrides": {},
+  "risk": "low",
+  "loop": {
+    "validator_passed": false,
+    "attempts": 0
+  },
+  "history": []
+}

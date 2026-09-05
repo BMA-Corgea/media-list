@@ -1,0 +1,51 @@
+{
+  "id": "T-5",
+  "slug": "the-wall-rotating-cover-art-carousel-on-the-home",
+  "type": "feature",
+  "title": "The wall: rotating cover-art carousel on the home page",
+  "stage": "intake",
+  "status": "triage",
+  "spec": "Home page is a carousel of cover art that is pleasant to just look at — this is the whole reason the project is not a spreadsheet. Rotates BOTH by click-and-drag (pointer events, momentum, snap to nearest) AND by buttons on either side. Cards show poster art, title, year and kind. Clicking a card opens its title page (T-6). Works with 1 title, with 200, and with 0 (a real empty state that invites adding something, not a blank screen). Keyboard arrows step it; respects prefers-reduced-motion by dropping to instant transitions. Fully skin-driven — no hardcoded colours, only tokens from T-2. ACCEPT: drag rotates it under the cursor and settles cleanly; the side buttons step exactly one card; it looks right in every shipped skin.",
+  "pipeline_version": "feature@v1",
+  "modifiers": [],
+  "pipeline": [
+    "intake",
+    "refine",
+    "queue",
+    "locate",
+    "plan",
+    "build",
+    "auto-review",
+    "gate",
+    "verify",
+    "uat",
+    "release",
+    "monitor"
+  ],
+  "passport": [
+    "2026-09-05 created as feature \"The wall: rotating cover-art carousel on the home page\" on feature@v1 by agent:claude(on-behalf:evan,session-01PKVMkM)"
+  ],
+  "assignees": {},
+  "links": {
+    "intent": "T-1"
+  },
+  "depends_on": [
+    "T-4"
+  ],
+  "gates": {
+    "spec_ready": false,
+    "merge": false,
+    "accept": false,
+    "deploy": false,
+    "sp_decide": false,
+    "ex_decide": false,
+    "compliance": false
+  },
+  "overrides": {},
+  "risk": "medium",
+  "loop": {
+    "validator_passed": false,
+    "attempts": 0
+  },
+  "history": []
+}

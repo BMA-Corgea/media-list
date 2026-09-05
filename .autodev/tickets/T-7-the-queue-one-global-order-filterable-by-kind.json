@@ -1,0 +1,51 @@
+{
+  "id": "T-7",
+  "slug": "the-queue-one-global-order-filterable-by-kind",
+  "type": "feature",
+  "title": "The queue: one global order, filterable by kind",
+  "stage": "intake",
+  "status": "triage",
+  "spec": "ONE global ordered queue (queue_position), not per-genre queues — Evan's explicit choice. Drag to reorder, persisted immediately; reordering is stable and gap-tolerant. Filter chips for anime / movie / live-action narrow the VIEW without forking the order. A whole series is one row — no episode tracking, explicitly out of scope. 'Up next' is simply position 1. ACCEPT: dragging item 9 to position 2 persists across reload; filtering to anime and reordering within the filter does not corrupt the global order.",
+  "pipeline_version": "feature@v1",
+  "modifiers": [],
+  "pipeline": [
+    "intake",
+    "refine",
+    "queue",
+    "locate",
+    "plan",
+    "build",
+    "auto-review",
+    "gate",
+    "verify",
+    "uat",
+    "release",
+    "monitor"
+  ],
+  "passport": [
+    "2026-09-05 created as feature \"The queue: one global order, filterable by kind\" on feature@v1 by agent:claude(on-behalf:evan,session-01PKVMkM)"
+  ],
+  "assignees": {},
+  "links": {
+    "intent": "T-1"
+  },
+  "depends_on": [
+    "T-4"
+  ],
+  "gates": {
+    "spec_ready": false,
+    "merge": false,
+    "accept": false,
+    "deploy": false,
+    "sp_decide": false,
+    "ex_decide": false,
+    "compliance": false
+  },
+  "overrides": {},
+  "risk": "medium",
+  "loop": {
+    "validator_passed": false,
+    "attempts": 0
+  },
+  "history": []
+}
