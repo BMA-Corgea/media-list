@@ -1,60 +1,50 @@
 /**
- * media-list — app entry.
+ * media-list — app shell.
  *
- * T-2 ships the shell: the bar, the skin switcher, and an honest empty state. Every surface
- * this app will grow (T-5's carousel, T-6's title page, T-7's queue, T-8's wheel, T-9's
- * archive) mounts into `#app` and reaches for the component classes in `skins/base.css`
- * rather than declaring colours of its own.
+ * Owns the bar and the router outlet; every screen lives in `views/` and registers a route.
  */
 
 import { skinPicker } from './skins.js';
+import { route, start, navigate, current } from './router.js';
+import { listView } from './views/list.js';
+import { addView } from './views/add.js';
 
-async function health() {
-  try {
-    const response = await fetch('/api/health');
-    if (!response.ok) throw new Error(String(response.status));
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
+const NAV = [
+  { path: '', label: 'The list' },
+  { path: 'add', label: 'Add' },
+];
 
-function topbar() {
+function shell() {
   const bar = document.createElement('header');
   bar.className = 'topbar';
-  bar.innerHTML = `
-    <span class="brand">media<em>·</em>list</span>
-    <span class="grow"></span>
-  `;
-  bar.append(skinPicker());
-  return bar;
+
+  const brand = Object.assign(document.createElement('button'), { className: 'brand', type: 'button' });
+  brand.innerHTML = 'media<em>·</em>list';
+  brand.addEventListener('click', () => navigate('/'));
+
+  const nav = document.createElement('nav');
+  nav.className = 'nav';
+  for (const item of NAV) {
+    const link = Object.assign(document.createElement('button'), { className: 'chip', type: 'button', textContent: item.label });
+    link.dataset.path = item.path;
+    link.addEventListener('click', () => navigate(`/${item.path}`));
+    nav.append(link);
+  }
+
+  bar.append(brand, nav, Object.assign(document.createElement('span'), { className: 'grow' }), skinPicker());
+  return { bar, nav };
 }
 
-function emptyState(status) {
-  const section = document.createElement('main');
-  section.className = 'page';
+route('', listView);
+route('add', addView);
 
-  // Say what is actually true rather than implying a finished app with no data in it.
-  const sources = status?.sources ?? {};
-  const missing = Object.entries(sources)
-    .filter(([, present]) => !present)
-    .map(([name]) => name);
+const app = document.querySelector('#app');
+const { bar, nav } = shell();
+const outlet = document.createElement('div');
+app.replaceChildren(bar, outlet);
 
-  section.innerHTML = `
-    <p class="section-title">Up next</p>
-    <div class="empty">
-      <h2>Nothing on the list yet</h2>
-      <p>The wall fills up once you can add things to it — that arrives with search-and-pick.</p>
-      ${missing.length ? `<p style="margin-top:14px"><span class="kind">waiting on credentials</span> ${missing.join(', ')}</p>` : ''}
-    </div>
-  `;
-  return section;
-}
-
-async function main() {
-  const app = document.querySelector('#app');
-  const status = await health();
-  app.replaceChildren(topbar(), emptyState(status));
-}
-
-main();
+start(outlet, (path) => {
+  for (const link of nav.children) {
+    link.setAttribute('aria-pressed', String(link.dataset.path === path));
+  }
+});

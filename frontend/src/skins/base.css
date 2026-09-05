@@ -114,7 +114,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
 }
-.brand { font: 600 17px/1 var(--font-display); letter-spacing: -.01em; }
+/* The brand is a button so it can navigate home; it must not look like one. */
+.brand {
+  font: 600 17px/1 var(--font-display); letter-spacing: -.01em;
+  border: 0; background: none; padding: 0; color: inherit; cursor: pointer;
+}
 .brand em { font-style: normal; color: var(--accent); }
 .grow { flex: 1 1 auto; }
 .page { max-width: 1240px; margin: 0 auto; padding: 28px 22px 72px; }
@@ -229,6 +233,47 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: absolute; inset: 0;
   background: linear-gradient(to top, var(--scrim), transparent 62%);
 }
+
+
+/* ── the wall: a responsive grid of cards ────────────────────────────────────────── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 22px 18px;
+}
+.card--pick {
+  border: 0; background: none; padding: 0; text-align: left; font: inherit; color: inherit;
+}
+.card--pick:disabled { cursor: progress; }
+.card--pick.is-added .poster { outline: 2px solid var(--seen); outline-offset: 2px; }
+.card--pick.is-adding { opacity: .55; }
+
+.card__frame { position: relative; }
+.card__remove {
+  position: absolute; top: 7px; right: 7px;
+  width: 26px; height: 26px; padding: 0; line-height: 1;
+  border: 1px solid var(--line-strong); border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  color: var(--muted); cursor: pointer; opacity: 0;
+  transition: opacity var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.card:hover .card__remove, .card__remove:focus-visible { opacity: 1; }
+.card__remove:hover { color: var(--accent); border-color: var(--accent); }
+.card__why {
+  margin: 2px 0 0; font-size: 12.5px; line-height: 1.4; color: var(--muted); font-style: italic;
+}
+.poster__none {
+  display: grid; place-items: center; height: 100%;
+  color: var(--faint); font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+}
+
+/* ── search + nav ────────────────────────────────────────────────────────────────── */
+.nav { display: flex; gap: 8px; }
+.addbar { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; }
+@media (max-width: 640px) { .addbar { grid-template-columns: 1fr; } }
+.hint { margin: 10px 0 22px; color: var(--muted); font-size: 13px; min-height: 1.2em; }
+.hint.ok  { color: var(--seen); }
+.hint.bad { color: var(--accent); }
 
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }

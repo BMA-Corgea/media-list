@@ -3,8 +3,8 @@
   "slug": "add-a-title-search-and-pick",
   "type": "feature",
   "title": "Add a title: search-and-pick",
-  "stage": "intake",
-  "status": "triage",
+  "stage": "gate",
+  "status": "awaiting_approval",
   "spec": "The primary success criterion. A search field; typing shows candidate cards WITH POSTERS as you type (debounced); clicking one adds it — title, year, kind, summary, artwork, IMDb link and genres all populated from T-3 with zero typing. Optional 'why' field, free text, one line. New titles append to the end of the queue with status=queued. Duplicate tmdb_id is refused with a clear message pointing at the existing entry. HARD RULE: no field for summary, poster URL, or IMDb link is ever presented to the user — if a human is typing metadata this ticket has failed. ACCEPT: adding Cowboy Bebop takes one search and one click, and the resulting record carries poster, backdrop, summary, year, kind and a working IMDb link.",
   "pipeline_version": "feature@v1",
   "modifiers": [],
@@ -23,7 +23,11 @@
     "monitor"
   ],
   "passport": [
-    "2026-09-05 created as feature \"Add a title: search-and-pick\" on feature@v1 by agent:claude(on-behalf:evan,session-01PKVMkM)"
+    "2026-09-05 advanced queue → locate · queue on unrecorded",
+    "2026-09-05 advanced locate → plan · locate on unrecorded",
+    "2026-09-05 advanced plan → build · plan on unrecorded",
+    "2026-09-05 advanced build → auto-review · build on unrecorded",
+    "2026-09-05 advanced auto-review → gate · auto-review on unrecorded"
   ],
   "assignees": {},
   "links": {
@@ -33,7 +37,7 @@
     "T-3"
   ],
   "gates": {
-    "spec_ready": false,
+    "spec_ready": true,
     "merge": false,
     "accept": false,
     "deploy": false,
@@ -47,5 +51,106 @@
     "validator_passed": false,
     "attempts": 0
   },
-  "history": []
+  "history": [
+    {
+      "from": "intake",
+      "to": "refine",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:15:48.170Z"
+    },
+    {
+      "from": "refine",
+      "to": "queue",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:15:48.303Z"
+    },
+    {
+      "from": "queue",
+      "to": "locate",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:15:48.373Z"
+    },
+    {
+      "from": "locate",
+      "to": "plan",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:15:48.435Z"
+    },
+    {
+      "from": "plan",
+      "to": "build",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:15:48.499Z"
+    },
+    {
+      "from": "build",
+      "to": "auto-review",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:20:46.979Z"
+    },
+    {
+      "from": "auto-review",
+      "to": "gate",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:20:47.045Z"
+    }
+  ],
+  "receipts": {
+    "intake": {
+      "evidence": "INTAKE: feature, --intent T-1, --after T-3 (shipped). No duplicate. Deliverable is working code.",
+      "kind": "other",
+      "fingerprint": "INTAKE: feature, --intent T-1, --after T-3 (shipped). No duplicate. Deliverable is working code.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:15:48.168Z",
+      "model": "unrecorded"
+    },
+    "refine": {
+      "evidence": "Spec at .autodev/specs/T-4.md, 9 testable ACs. AC2 is written so it can FAIL a wrong implementation — 'the only typeable field is why, verified by counting inputs in the DOM' — because T-1's failure condition for this ticket is a user typing metadata. AC3 discharges the obligation T-3 recorded in kb/CURRENT-WORK.md (persist media_type or a later refresh returns the wrong film). AC6 requires debouncing to be MEASURED rather than assumed. AC5 fixes queue_position to max+10 because T-7's acceptance criteria already promise gap tolerance.",
+      "kind": "other",
+      "fingerprint": "Spec at .autodev/specs/T-4.md, 9 testable ACs. AC2 is written so it can FAIL a wrong implementation — 'the only typeable field is why, verified by counting inputs in the DOM' — because T-1's failure condition for this ticket is a user typing metadata. AC3 discharges the obligation T-3 recorded in kb/CURRENT-WORK.md (persist media_type or a later refresh returns the wrong film). AC6 requires debouncing to be MEASURED rather than assumed. AC5 fixes queue_position to max+10 because T-7's acceptance criteria already promise gap tolerance.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:15:48.236Z",
+      "model": "unrecorded"
+    },
+    "queue": {
+      "evidence": "QUEUED: only dispatchable ticket — T-3 shipped; T-5/T-6/T-7/T-8 all wait on this one. Spec present, gate cleared under GA-1.",
+      "kind": "other",
+      "fingerprint": "QUEUED: only dispatchable ticket — T-3 shipped; T-5/T-6/T-7/T-8 all wait on this one. Spec present, gate cleared under GA-1.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:15:48.372Z",
+      "model": "unrecorded"
+    },
+    "locate": {
+      "evidence": "LOCATE at .autodev/locates/T-4.md: T-4 adds no source-integration code — /api/search, /api/details and cache() from T-3 are the whole capture path, and every column it writes already exists from T-2. Four constraints found by reading that code: IntegrityError on the (source,source_id) unique index is the race-safe duplicate signal so a SELECT-first check would be wrong; db.execute opens a connection per call; detail is a TEXT/JSON column so media_type must be merged in rather than given a new column; and no client router exists yet, so T-4 introduces the minimum one instead of leaving T-5 and T-6 to each invent their own. Also records that the add view must use base.css's existing component classes and declare no colours, or alternate skins stop covering it.",
+      "kind": "other",
+      "fingerprint": "LOCATE at .autodev/locates/T-4.md: T-4 adds no source-integration code — /api/search, /api/details and cache() from T-3 are the whole capture path, and every column it writes already exists from T-2. Four constraints found by reading that code: IntegrityError on the (source,source_id) unique index is the race-safe duplicate signal so a SELECT-first check would be wrong; db.execute opens a connection per call; detail is a TEXT/JSON column so media_type must be merged in rather than given a new column; and no client router exists yet, so T-4 introduces the minimum one instead of leaving T-5 and T-6 to each invent their own. Also records that the add view must use base.css's existing component classes and declare no colours, or alternate skins stop covering it.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:15:48.434Z",
+      "model": "unrecorded"
+    },
+    "plan": {
+      "evidence": "PLAN at .autodev/plans/T-4.md, 6 steps mapped to ACs. Two decisions recorded: a 250ms debounce that also ABORTS the in-flight request when a newer keystroke lands, because without the abort results arrive out of order and the grid answers a query the user has already typed past; and delete deliberately not evicting cached artwork, since files are content-addressed and two titles can share an image — recorded so it reads as a decision rather than an oversight. Step 4 introduces the minimal client router T-5 and T-6 will both need, rather than leaving each to invent one.",
+      "kind": "other",
+      "fingerprint": "PLAN at .autodev/plans/T-4.md, 6 steps mapped to ACs. Two decisions recorded: a 250ms debounce that also ABORTS the in-flight request when a newer keystroke lands, because without the abort results arrive out of order and the grid answers a query the user has already typed past; and delete deliberately not evicting cached artwork, since files are content-addressed and two titles can share an image — recorded so it reads as a decision rather than an oversight. Step 4 introduces the minimal client router T-5 and T-6 will both need, rather than leaving each to invent one.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:15:48.498Z",
+      "model": "unrecorded"
+    },
+    "build": {
+      "evidence": "BUILT AND PROVEN IN A REAL BROWSER — evidence at .autodev/evidence/T-4/build.md with screenshots. AC1: typed 'perfect blue', clicked the poster, got a stored row with title/year/kind/summary/local art/genres/IMDb link and nothing typed but why. AC2 proven by DOM AUDIT — the entire add flow contains exactly two inputs, the search box and why; no field exists for summary, poster URL, link or genre. AC6 proven by MEASUREMENT — 12 characters typed at 40ms intervals produced exactly 1 /api/search request, counted from the browser's request stream. AC3: stored rows carry detail.media_type (tv for Cowboy Bebop, movie for The Thing), discharging T-3's recorded obligation. AC4: re-adding Cowboy Bebop returned 409 naming the existing entry and the table still held one row. AC5: positions 10/20/30, gap-tolerant per T-7. AC7: zero stored rows hold a remote URL. AC9: remove took the grid from 3 cards to 2. One defect found and fixed mid-ticket: the brand button kept its native border and rendered as a box; reset in base.css, re-verified borderTopWidth 0px. Final run: zero pageerrors and zero console errors. Gaps: games unproven (IGDB credentials incomplete), Chromium only.",
+      "kind": "other",
+      "fingerprint": "BUILT AND PROVEN IN A REAL BROWSER — evidence at .autodev/evidence/T-4/build.md with screenshots. AC1: typed 'perfect blue', clicked the poster, got a stored row with title/year/kind/summary/local art/genres/IMDb link and nothing typed but why. AC2 proven by DOM AUDIT — the entire add flow contains exactly two inputs, the search box and why; no field exists for summary, poster URL, link or genre. AC6 proven by MEASUREMENT — 12 characters typed at 40ms intervals produced exactly 1 /api/search request, counted from the browser's request stream. AC3: stored rows carry detail.media_type (tv for Cowboy Bebop, movie for The Thing), discharging T-3's recorded obligation. AC4: re-adding Cowboy Bebop returned 409 naming the existing entry and the table still held one row. AC5: positions 10/20/30, gap-tolerant per T-7. AC7: zero stored rows hold a remote URL. AC9: remove took the grid from 3 cards to 2. One defect found and fixed mid-ticket: the brand button kept its native border and rendered as a box; reset in base.css, re-verified borderTopWidth 0px. Final run: zero pageerrors and zero console errors. Gaps: games unproven (IGDB credentials incomplete), Chromium only.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:20:46.978Z",
+      "model": "unrecorded"
+    },
+    "auto-review": {
+      "evidence": "REVIEWED. No new defects survived: the one found during the build (brand button border) was fixed and re-verified before this stage. Deliberate decisions re-examined and left standing, each with its reason: (1) duplicates are caught via sqlite3.IntegrityError on the (source,source_id) unique index rather than a SELECT-then-INSERT, which is the only race-safe option; (2) DELETE does not evict cached artwork because files are content-addressed and two titles can legitimately share an image, so reference counting would cost more than the bytes; (3) the search debounce also ABORTS the in-flight request, without which a slow early response can land after a fast later one and the grid answers a query the user has typed past — this is why AC6 measures requests rather than trusting the timer; (4) the outbound link is DERIVED at serialisation from imdb_id or detail.igdb_url rather than stored, because a single stored link column would be null for every game. All new component classes (.grid, .card__frame, .card__remove, .card__why, .addbar, .hint, .nav) were added to base.css rather than to a view, so alternate skins keep covering surfaces written after them — verified by screenshotting the populated list under nocturne.",
+      "kind": "other",
+      "fingerprint": "REVIEWED. No new defects survived: the one found during the build (brand button border) was fixed and re-verified before this stage. Deliberate decisions re-examined and left standing, each with its reason: (1) duplicates are caught via sqlite3.IntegrityError on the (source,source_id) unique index rather than a SELECT-then-INSERT, which is the only race-safe option; (2) DELETE does not evict cached artwork because files are content-addressed and two titles can legitimately share an image, so reference counting would cost more than the bytes; (3) the search debounce also ABORTS the in-flight request, without which a slow early response can land after a fast later one and the grid answers a query the user has typed past — this is why AC6 measures requests rather than trusting the timer; (4) the outbound link is DERIVED at serialisation from imdb_id or detail.igdb_url rather than stored, because a single stored link column would be null for every game. All new component classes (.grid, .card__frame, .card__remove, .card__why, .addbar, .hint, .nav) were added to base.css rather than to a view, so alternate skins keep covering surfaces written after them — verified by screenshotting the populated list under nocturne.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:20:47.043Z",
+      "model": "unrecorded"
+    }
+  }
 }

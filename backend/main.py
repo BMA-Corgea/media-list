@@ -7,16 +7,19 @@ single-user app has no reason to make you run two.
 from __future__ import annotations
 
 import asyncio
+import json
+import sqlite3
 
-from fastapi import APIRouter, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .artwork import cache as cache_art
 from .config import config
-from .db import bootstrap
+from .db import bootstrap, connection, execute, query
 from .sources import anilist, igdb, tmdb
+from .titles import now, serialise
 from .sources.base import SourceError
 
 api = APIRouter(prefix="/api")
@@ -89,35 +92,109 @@ async def search(q: str = Query(min_length=1, max_length=120)) -> JSONResponse:
 async def details(source: str, source_id: str, media_type: str | None = None) -> JSONResponse:
     """The full record for one candidate, with its artwork pulled local.
 
-    This is what T-4 calls before storing a title, which is why the caching happens here.
-
     `media_type` is REQUIRED for TMDB and must be carried through from the search result —
     see the namespace note in `sources/tmdb.details`. Anything that persists a TMDB title
     has to persist its media_type too, or it will not be able to refresh it later.
     """
     try:
-        if source == "tmdb":
-            record = await tmdb.details(source_id, media_type)
-            if record["kind"] == "anime":
-                # Decorate only. A fuzzy AniList match may add a studio or an episode count;
-                # it may never rename a title the user already picked off a poster.
-                extras = await anilist.enrich(record.get("original_title") or record["title"])
-                record["anilist_id"] = extras.pop("anilist_id", None)
-                record["detail"] = {**record.get("detail", {}), **extras}
-        elif source == "igdb":
-            record = await igdb.details(source_id)
-        else:
-            raise HTTPException(404, f"unknown source {source!r}")
+        return JSONResponse(await _fetch(source, source_id, media_type))
     except SourceError as error:
-        # A caller mistake is not a gateway failure. 400 and 404 belong to whoever called
-        # this; 401/429/5xx from upstream become 502, because from the caller's side the
-        # gateway is what failed.
         status = error.status if error.status in (400, 404) else 502
         raise HTTPException(status, error.as_dict()) from error
 
+
+async def _fetch(source: str, source_id: str, media_type: str | None) -> dict:
+    """The full record for one candidate, artwork already pulled local by /api/details."""
+    if source == "tmdb":
+        record = await tmdb.details(source_id, media_type)
+        if record["kind"] == "anime":
+            extras = await anilist.enrich(record.get("original_title") or record["title"])
+            record["anilist_id"] = extras.pop("anilist_id", None)
+            record["detail"] = {**record.get("detail", {}), **extras}
+    elif source == "igdb":
+        record = await igdb.details(source_id)
+    else:
+        raise HTTPException(404, f"unknown source {source!r}")
+
     record["poster_path"] = await cache_art(record.get("poster_url"))
     record["backdrop_path"] = await cache_art(record.get("backdrop_url"))
-    return JSONResponse(record)
+    return record
+
+
+@api.get("/titles")
+def list_titles(status: str | None = None) -> JSONResponse:
+    """The list, in queue order. Unpositioned rows sort last rather than first."""
+    sql = "SELECT * FROM titles"
+    params: tuple = ()
+    if status in ("queued", "seen"):
+        sql += " WHERE status = ?"
+        params = (status,)
+    sql += " ORDER BY queue_position IS NULL, queue_position, added_at"
+    return JSONResponse([serialise(r) for r in query(sql, params)])
+
+
+@api.post("/titles")
+async def add_title(payload: dict = Body(...)) -> JSONResponse:
+    """Store a candidate the user picked. Everything but `why` comes from the source."""
+    source = payload.get("source")
+    source_id = str(payload.get("source_id") or "")
+    if not source or not source_id:
+        raise HTTPException(400, "source and source_id are required")
+
+    try:
+        record = await _fetch(source, source_id, payload.get("media_type"))
+    except SourceError as error:
+        status = error.status if error.status in (400, 404) else 502
+        raise HTTPException(status, error.as_dict()) from error
+
+    # T-3's obligation (kb/CURRENT-WORK.md): a stored TMDB title MUST remember which
+    # namespace its id belongs to. Without it a later refresh of id 30991 returns
+    # "The Curse of the Living Corpse" instead of Cowboy Bebop.
+    detail = {**record.get("detail", {}), "media_type": record.get("media_type")}
+
+    with connection() as conn:
+        # Gap-tolerant, as T-7's reordering requires: append at max + 10, never renumber.
+        top = conn.execute("SELECT COALESCE(MAX(queue_position), 0) FROM titles").fetchone()[0]
+        try:
+            cursor = conn.execute(
+                """INSERT INTO titles (source, source_id, imdb_id, anilist_id, title,
+                        original_title, year, kind, summary, poster_path, backdrop_path,
+                        genres, detail, why, status, queue_position, added_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?)""",
+                (
+                    record["source"], record["source_id"], record.get("imdb_id"),
+                    record.get("anilist_id"), record["title"], record.get("original_title"),
+                    record.get("year"), record["kind"], record.get("summary"),
+                    record.get("poster_path"), record.get("backdrop_path"),
+                    json.dumps(record.get("genres") or []), json.dumps(detail),
+                    (payload.get("why") or "").strip() or None,
+                    top + 10, now(),
+                ),
+            )
+        except sqlite3.IntegrityError:
+            # Caught rather than pre-checked: the unique index makes this race-safe, a
+            # SELECT-then-INSERT would not be.
+            existing = conn.execute(
+                "SELECT id, title FROM titles WHERE source = ? AND source_id = ?",
+                (record["source"], record["source_id"]),
+            ).fetchone()
+            raise HTTPException(409, {
+                "detail": f"{existing['title']} is already on your list",
+                "existing_id": existing["id"],
+            }) from None
+        stored = conn.execute("SELECT * FROM titles WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        return JSONResponse(serialise(stored), status_code=201)
+
+
+@api.delete("/titles/{title_id}")
+def remove_title(title_id: int) -> JSONResponse:
+    """Remove a title. Cached artwork is deliberately left alone — files are addressed by
+    content, so another title may legitimately be using the same image."""
+    with connection() as conn:
+        cursor = conn.execute("DELETE FROM titles WHERE id = ?", (title_id,))
+        if cursor.rowcount == 0:
+            raise HTTPException(404, f"no title with id {title_id}")
+    return JSONResponse({"removed": title_id})
 
 
 def create_app() -> FastAPI:
