@@ -6,14 +6,14 @@
 
 import { skinPicker } from './skins.js';
 import { route, start, navigate, current } from './router.js';
-import { listView } from './views/list.js';
+import { queueView } from './views/queue.js';
 import { homeView } from './views/home.js';
 import { titleView } from './views/title.js';
 import { addView } from './views/add.js';
 
 const NAV = [
   { path: '', label: 'Up next' },
-  { path: 'list', label: 'Everything' },
+  { path: 'queue', label: 'The queue' },
   { path: 'add', label: 'Add' },
 ];
 
@@ -39,7 +39,7 @@ function shell() {
 }
 
 route('', homeView);
-route('list', listView);
+route('queue', queueView);
 route('add', addView);
 route(/^title\/(\d+)$/, titleView);
 

@@ -222,6 +222,94 @@ def update_title(title_id: int, payload: dict = Body(...)) -> JSONResponse:
     return JSONResponse(serialise(updated))
 
 
+SPREAD = 10  # the gap left between adjacent positions when the queue is renumbered
+
+
+def _renumber(conn) -> None:
+    """Respread every queued title to multiples of SPREAD, preserving the current order.
+
+    Reached when two neighbours are adjacent integers and no position exists between them.
+    Runs inside the caller's transaction, so a failure cannot leave the queue half-renumbered.
+    """
+    rows = conn.execute(
+        "SELECT id FROM titles ORDER BY queue_position IS NULL, queue_position, added_at"
+    ).fetchall()
+    for index, row in enumerate(rows, start=1):
+        conn.execute("UPDATE titles SET queue_position = ? WHERE id = ?", (index * SPREAD, row["id"]))
+
+
+@api.post("/titles/{title_id}/move")
+def move_title(title_id: int, payload: dict = Body(...)) -> JSONResponse:
+    """Move a title so it sits immediately after `after_id` (or immediately before `before_id`).
+
+    The caller sends the ids it can SEE, never an index. That is what makes a reorder done
+    inside a kind filter safe: the title lands next to exactly those rows, and every row the
+    filter was hiding keeps the position it already had.
+
+    Only ONE bound comes from the caller. The other is read from the database — the row that
+    is genuinely adjacent right now. Trusting both ends of a caller-supplied pair was a real
+    defect: with rows at 5 and 10, every insert "between them" computed the same midpoint 7,
+    so four titles ended up sharing position 7 and their order silently fell back to
+    `added_at`. Deriving the far bound from the current data means the gap is always the real
+    one, and when it is too small to divide the queue renumbers instead of colliding.
+    """
+    with connection() as conn:
+        if not conn.execute("SELECT 1 FROM titles WHERE id = ?", (title_id,)).fetchone():
+            raise HTTPException(404, f"no title with id {title_id}")
+
+        def position_of(other):
+            if other in (None, "", title_id):
+                return None
+            row = conn.execute("SELECT queue_position FROM titles WHERE id = ?", (int(other),)).fetchone()
+            return row["queue_position"] if row else None
+
+        def bounds():
+            """(above, below) — the real gap this title must land in."""
+            after = position_of(payload.get("after_id"))
+            before = position_of(payload.get("before_id"))
+            extremes = conn.execute("SELECT MIN(queue_position), MAX(queue_position) FROM titles").fetchone()
+            low, high = (extremes[0] or 0), (extremes[1] or 0)
+
+            if after is not None:
+                # Immediately after that row: the far bound is whatever actually follows it.
+                nxt = conn.execute(
+                    "SELECT MIN(queue_position) FROM titles WHERE queue_position > ? AND id != ?",
+                    (after, title_id),
+                ).fetchone()[0]
+                return after, (nxt if nxt is not None else after + 2 * SPREAD)
+
+            if before is not None:
+                prev = conn.execute(
+                    "SELECT MAX(queue_position) FROM titles WHERE queue_position < ? AND id != ?",
+                    (before, title_id),
+                ).fetchone()[0]
+                return (prev if prev is not None else before - 2 * SPREAD), before
+
+            # Neither neighbour named: send it to the end.
+            return high, high + 2 * SPREAD
+
+        above, below = bounds()
+        target = (above + below) // 2
+
+        # Two ways this can be wrong: no integer strictly between the bounds, or an integer
+        # that some other row already occupies (which would make the order ambiguous).
+        def taken(value):
+            return conn.execute(
+                "SELECT 1 FROM titles WHERE queue_position = ? AND id != ?", (value, title_id)
+            ).fetchone() is not None
+
+        if not (above < target < below) or taken(target):
+            _renumber(conn)
+            above, below = bounds()
+            target = (above + below) // 2
+
+        conn.execute("UPDATE titles SET queue_position = ? WHERE id = ?", (target, title_id))
+        rows = conn.execute(
+            "SELECT * FROM titles WHERE status = 'queued' ORDER BY queue_position IS NULL, queue_position, added_at"
+        ).fetchall()
+    return JSONResponse([serialise(r) for r in rows])
+
+
 @api.delete("/titles/{title_id}")
 def remove_title(title_id: int) -> JSONResponse:
     """Remove a title. Cached artwork is deliberately left alone — files are addressed by

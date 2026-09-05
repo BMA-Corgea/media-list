@@ -3,8 +3,8 @@
   "slug": "title-page-hero-art-summary-imdb-link-and-your-w",
   "type": "feature",
   "title": "Title page: hero art, summary, IMDb link, and your why",
-  "stage": "gate",
-  "status": "awaiting_approval",
+  "stage": "monitor",
+  "status": "complete",
   "spec": "A page per title: backdrop as hero, poster, title (and romaji/English both, for anime), year, kind, genres, runtime or episode count, the summary, and the 'why' Evan recorded when adding it. Outbound IMDb link built from imdb_id. Actions: mark watched (hands off to T-9), edit why, remove from list, move to top of queue. Reads as a page worth landing on, not a data dump. ACCEPT: every field present renders, every field absent degrades without a hole in the layout, and the IMDb link opens the right title.",
   "pipeline_version": "feature@v1",
   "modifiers": [],
@@ -23,11 +23,11 @@
     "monitor"
   ],
   "passport": [
-    "2026-09-05 advanced queue → locate · queue on unrecorded",
-    "2026-09-05 advanced locate → plan · locate on unrecorded",
-    "2026-09-05 advanced plan → build · plan on unrecorded",
-    "2026-09-05 advanced build → auto-review · build on unrecorded",
-    "2026-09-05 advanced auto-review → gate · auto-review on unrecorded"
+    "2026-09-05 gate accept cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
+    "2026-09-05 advanced uat → release · uat on unrecorded",
+    "2026-09-05 gate deploy cleared by policy:unattended",
+    "2026-09-05 advanced release → monitor · release on unrecorded",
+    "2026-09-05 pipeline complete at monitor"
   ],
   "assignees": {},
   "links": {
@@ -38,9 +38,9 @@
   ],
   "gates": {
     "spec_ready": true,
-    "merge": false,
-    "accept": false,
-    "deploy": false,
+    "merge": true,
+    "accept": true,
+    "deploy": true,
     "sp_decide": false,
     "ex_decide": false,
     "compliance": false
@@ -48,8 +48,9 @@
   "overrides": {},
   "risk": "low",
   "loop": {
-    "validator_passed": false,
-    "attempts": 0
+    "validator_passed": true,
+    "attempts": 0,
+    "evidence": "MONITOR — nothing deployed; on-demand loopback, no daemon. Carried forward: T-9 wires the disabled Mark as played/watched button and must read the verb from frontend/src/kinds.js rather than re-deciding it; T-7's drag reordering must preserve the gap-tolerant positions move-to-top relies on; every frontend ticket should grep the bundle for a string unique to its new code, because a green Vite build did not catch an unimported module here. Zero application errors at close."
   },
   "history": [
     {
@@ -93,6 +94,30 @@
       "to": "gate",
       "by": "agent:claude(on-behalf:evan,GA-1)",
       "at": "2026-09-05T04:39:51.683Z"
+    },
+    {
+      "from": "gate",
+      "to": "verify",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:39:51.914Z"
+    },
+    {
+      "from": "verify",
+      "to": "uat",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:39:52.040Z"
+    },
+    {
+      "from": "uat",
+      "to": "release",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:39:52.259Z"
+    },
+    {
+      "from": "release",
+      "to": "monitor",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:39:52.573Z"
     }
   ],
   "receipts": {
@@ -151,6 +176,47 @@
       "by": "agent:claude(on-behalf:evan,GA-1)",
       "at": "2026-09-05T04:39:51.674Z",
       "model": "unrecorded"
+    },
+    "gate": {
+      "evidence": "MERGE gate, unattended, green: committed on main. The wiring defect was caught and fixed before the gate. No static-mount change, so T-2's traversal regression is untouched.",
+      "kind": "other",
+      "fingerprint": "MERGE gate, unattended, green: committed on main. The wiring defect was caught and fixed before the gate. No static-mount change, so T-2's traversal regression is untouched.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:39:51.911Z",
+      "model": "unrecorded"
+    },
+    "verify": {
+      "evidence": "VERIFIED: all 10 ACs re-run in Chromium against live data after the import fix and rebuild, including the sparse-row and missing-id paths and a reload to prove the why persisted. Bundle content verified by grep rather than trusting the build's exit code. Console showed two 404s, both from tests that deliberately request a missing title (AC9 and AC8's post-delete check) — the feature working, not a fault. Not covered: Chromium only, no automated runner.",
+      "kind": "other",
+      "fingerprint": "VERIFIED: all 10 ACs re-run in Chromium against live data after the import fix and rebuild, including the sparse-row and missing-id paths and a reload to prove the why persisted. Bundle content verified by grep rather than trusting the build's exit code. Console showed two 404s, both from tests that deliberately request a missing title (AC9 and AC8's post-delete check) — the feature working, not a fault. Not covered: Chromium only, no automated runner.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:39:52.039Z",
+      "model": "unrecorded"
+    },
+    "uat": {
+      "evidence": "ACCEPT cleared under GA-1. VISION-CONFORMANCE against T-1: success-shape item 1 promises 'a real page per title with a summary, hero image, IMDb link and more', and the games amendment then required that 'more' to differ by kind rather than be one flattened template. The evidence shows exactly that — the same page renders Team Cherry and ten platforms for Hollow Knight and Sunrise, Spring 1998 and 26 episodes for Cowboy Bebop, with the right outbound site for each. T-1 also called the 'why' the nicest thing on the title page; it is here, in the owner's own words, editable without leaving the page. Against non-goals: no episode PROGRESS (episode counts are displayed metadata), no sharing, no recommendations, no wider bind. Nothing descoped — rating was scoped OUT of this ticket at spec time, not dropped from it, and the affordance is visible and labelled so the page is not silently missing its main action.",
+      "kind": "other",
+      "fingerprint": "ACCEPT cleared under GA-1. VISION-CONFORMANCE against T-1: success-shape item 1 promises 'a real page per title with a summary, hero image, IMDb link and more', and the games amendment then required that 'more' to differ by kind rather than be one flattened template. The evidence shows exactly that — the same page renders Team Cherry and ten platforms for Hollow Knight and Sunrise, Spring 1998 and 26 episodes for Cowboy Bebop, with the right outbound site for each. T-1 also called the 'why' the nicest thing on the title page; it is here, in the owner's own words, editable without leaving the page. Against non-goals: no episode PROGRESS (episode counts are displayed metadata), no sharing, no recommendations, no wider bind. Nothing descoped — rating was scoped OUT of this ticket at spec time, not dropped from it, and the affordance is visible and labelled so the page is not silently missing its main action.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:39:52.254Z",
+      "model": "unrecorded"
+    },
+    "release": {
+      "evidence": "MONITOR — nothing deployed; on-demand loopback. Carried forward: T-9 wires the disabled 'Mark as played/watched' button on this page and must read the verb from frontend/src/kinds.js rather than re-deciding it; T-7's drag reordering must preserve the gap-tolerant positions that move-to-top relies on; and every frontend ticket should grep the bundle for a string unique to its new code, because a green Vite build did not catch an unimported module here. Zero application errors at close.",
+      "kind": "other",
+      "fingerprint": "MONITOR — nothing deployed; on-demand loopback. Carried forward: T-9 wires the disabled 'Mark as played/watched' button on this page and must read the verb from frontend/src/kinds.js rather than re-deciding it; T-7's drag reordering must preserve the gap-tolerant positions that move-to-top relies on; and every frontend ticket should grep the bundle for a string unique to its new code, because a green Vite build did not catch an unimported module here. Zero application errors at close.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:39:52.564Z",
+      "model": "unrecorded"
+    },
+    "monitor": {
+      "evidence": "MONITOR — nothing deployed; on-demand loopback, no daemon. Carried forward: T-9 wires the disabled Mark as played/watched button and must read the verb from frontend/src/kinds.js rather than re-deciding it; T-7's drag reordering must preserve the gap-tolerant positions move-to-top relies on; every frontend ticket should grep the bundle for a string unique to its new code, because a green Vite build did not catch an unimported module here. Zero application errors at close.",
+      "kind": "other",
+      "fingerprint": "MONITOR — nothing deployed; on-demand loopback, no daemon. Carried forward: T-9 wires the disabled Mark as played/watched button and must read the verb from frontend/src/kinds.js rather than re-deciding it; T-7's drag reordering must preserve the gap-tolerant positions move-to-top relies on; every frontend ticket should grep the bundle for a string unique to its new code, because a green Vite build did not catch an unimported module here. Zero application errors at close.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:40:02.613Z",
+      "model": "unrecorded"
     }
-  }
+  },
+  "completed": true
 }

@@ -25,5 +25,6 @@ export const api = {
   patch: (id, changes) => request(`/api/titles/${id}`, { method: 'PATCH', body: JSON.stringify(changes) }),
   titles: (status) => request(`/api/titles${status ? `?status=${status}` : ''}`),
   add: (candidate) => request('/api/titles', { method: 'POST', body: JSON.stringify(candidate) }),
+  move: (id, neighbours) => request(`/api/titles/${id}/move`, { method: 'POST', body: JSON.stringify(neighbours) }),
   remove: (id) => request(`/api/titles/${id}`, { method: 'DELETE' }),
 };
