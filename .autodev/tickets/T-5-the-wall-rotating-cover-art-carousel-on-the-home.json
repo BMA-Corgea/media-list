@@ -3,8 +3,8 @@
   "slug": "the-wall-rotating-cover-art-carousel-on-the-home",
   "type": "feature",
   "title": "The wall: rotating cover-art carousel on the home page",
-  "stage": "gate",
-  "status": "awaiting_approval",
+  "stage": "monitor",
+  "status": "complete",
   "spec": "Home page is a carousel of cover art that is pleasant to just look at — this is the whole reason the project is not a spreadsheet. Rotates BOTH by click-and-drag (pointer events, momentum, snap to nearest) AND by buttons on either side. Cards show poster art, title, year and kind. Clicking a card opens its title page (T-6). Works with 1 title, with 200, and with 0 (a real empty state that invites adding something, not a blank screen). Keyboard arrows step it; respects prefers-reduced-motion by dropping to instant transitions. Fully skin-driven — no hardcoded colours, only tokens from T-2. ACCEPT: drag rotates it under the cursor and settles cleanly; the side buttons step exactly one card; it looks right in every shipped skin.",
   "pipeline_version": "feature@v1",
   "modifiers": [],
@@ -23,11 +23,11 @@
     "monitor"
   ],
   "passport": [
-    "2026-09-05 advanced queue → locate · queue on unrecorded",
-    "2026-09-05 advanced locate → plan · locate on unrecorded",
-    "2026-09-05 advanced plan → build · plan on unrecorded",
-    "2026-09-05 advanced build → auto-review · build on unrecorded",
-    "2026-09-05 advanced auto-review → gate · auto-review on unrecorded"
+    "2026-09-05 gate accept cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
+    "2026-09-05 advanced uat → release · uat on unrecorded",
+    "2026-09-05 gate deploy cleared by policy:unattended",
+    "2026-09-05 advanced release → monitor · release on unrecorded",
+    "2026-09-05 pipeline complete at monitor"
   ],
   "assignees": {},
   "links": {
@@ -38,9 +38,9 @@
   ],
   "gates": {
     "spec_ready": true,
-    "merge": false,
-    "accept": false,
-    "deploy": false,
+    "merge": true,
+    "accept": true,
+    "deploy": true,
     "sp_decide": false,
     "ex_decide": false,
     "compliance": false
@@ -48,8 +48,9 @@
   "overrides": {},
   "risk": "medium",
   "loop": {
-    "validator_passed": false,
-    "attempts": 0
+    "validator_passed": true,
+    "attempts": 0,
+    "evidence": "MONITOR — nothing deployed to watch: on-demand loopback, no daemon. Zero application errors at close. Carried forward: T-11 must not introduce a colour literal into the coverflow CSS block (AC7's check is a re-runnable grep), and T-6 must fill the #/title/{id} route this ticket registered with a placeholder."
   },
   "history": [
     {
@@ -93,6 +94,30 @@
       "to": "gate",
       "by": "agent:claude(on-behalf:evan,GA-1)",
       "at": "2026-09-05T04:31:11.428Z"
+    },
+    {
+      "from": "gate",
+      "to": "verify",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:31:11.693Z"
+    },
+    {
+      "from": "verify",
+      "to": "uat",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:31:11.796Z"
+    },
+    {
+      "from": "uat",
+      "to": "release",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:31:12.071Z"
+    },
+    {
+      "from": "release",
+      "to": "monitor",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:31:12.189Z"
     }
   ],
   "receipts": {
@@ -151,6 +176,47 @@
       "by": "agent:claude(on-behalf:evan,GA-1)",
       "at": "2026-09-05T04:31:11.426Z",
       "model": "unrecorded"
+    },
+    "gate": {
+      "evidence": "MERGE gate, unattended, green: committed on main; the pointer-capture defect was fixed and re-verified before the gate rather than deferred past it. No route or static-mount change, so T-2's traversal regression is untouched.",
+      "kind": "other",
+      "fingerprint": "MERGE gate, unattended, green: committed on main; the pointer-capture defect was fixed and re-verified before the gate rather than deferred past it. No route or static-mount change, so T-2's traversal regression is untouched.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:31:11.688Z",
+      "model": "unrecorded"
+    },
+    "verify": {
+      "evidence": "VERIFIED: every AC re-run in Chromium after the fix and rebuild, including the three list sizes (0, 1, 211) and reduced motion in its own browser context. Live data throughout. Not covered: Chromium only, no touch-hardware test (Pointer Events give one code path for mouse and touch but a real finger was not used), and no automated runner.",
+      "kind": "other",
+      "fingerprint": "VERIFIED: every AC re-run in Chromium after the fix and rebuild, including the three list sizes (0, 1, 211) and reduced motion in its own browser context. Live data throughout. Not covered: Chromium only, no touch-hardware test (Pointer Events give one code path for mouse and touch but a real finger was not used), and no automated runner.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:31:11.794Z",
+      "model": "unrecorded"
+    },
+    "uat": {
+      "evidence": "ACCEPT cleared under GA-1. VISION-CONFORMANCE against T-1: the objective says the spreadsheet fails at retrieval and DESIRE, and rules that correct data behind a dull surface has missed the objective. This ticket is the desire half, so the honest test is whether the thing is pleasant, and the evidence screenshots are the artefact: real poster art in 3D depth, an amber accent under nocturne, the why quoted under the centre card. Success-shape item 2 asked for click-and-drag AND side buttons — both are proven, and the bug that would have broken item 2's promise (a drag that navigates, or a click that does not) was found and fixed here. Against non-goals: no episode tracking, no sharing, no recommendations, no wider bind, and no reordering (that is T-7, deliberately absent).",
+      "kind": "other",
+      "fingerprint": "ACCEPT cleared under GA-1. VISION-CONFORMANCE against T-1: the objective says the spreadsheet fails at retrieval and DESIRE, and rules that correct data behind a dull surface has missed the objective. This ticket is the desire half, so the honest test is whether the thing is pleasant, and the evidence screenshots are the artefact: real poster art in 3D depth, an amber accent under nocturne, the why quoted under the centre card. Success-shape item 2 asked for click-and-drag AND side buttons — both are proven, and the bug that would have broken item 2's promise (a drag that navigates, or a click that does not) was found and fixed here. Against non-goals: no episode tracking, no sharing, no recommendations, no wider bind, and no reordering (that is T-7, deliberately absent).",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:31:12.070Z",
+      "model": "unrecorded"
+    },
+    "release": {
+      "evidence": "MONITOR — nothing deployed; on-demand loopback. Carried forward: T-11 will put Pexels chrome behind this carousel and must not introduce a colour literal into the coverflow block (AC7's check is a grep, re-runnable); T-6 must fill the #/title/{id} route this ticket registered with a placeholder. Zero errors at close.",
+      "kind": "other",
+      "fingerprint": "MONITOR — nothing deployed; on-demand loopback. Carried forward: T-11 will put Pexels chrome behind this carousel and must not introduce a colour literal into the coverflow block (AC7's check is a grep, re-runnable); T-6 must fill the #/title/{id} route this ticket registered with a placeholder. Zero errors at close.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:31:12.187Z",
+      "model": "unrecorded"
+    },
+    "monitor": {
+      "evidence": "MONITOR — nothing deployed to watch: on-demand loopback, no daemon. Zero application errors at close. Carried forward: T-11 must not introduce a colour literal into the coverflow CSS block (AC7's check is a re-runnable grep), and T-6 must fill the #/title/{id} route this ticket registered with a placeholder.",
+      "kind": "other",
+      "fingerprint": "MONITOR — nothing deployed to watch: on-demand loopback, no daemon. Zero application errors at close. Carried forward: T-11 must not introduce a colour literal into the coverflow CSS block (AC7's check is a re-runnable grep), and T-6 must fill the #/title/{id} route this ticket registered with a placeholder.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:31:33.521Z",
+      "model": "unrecorded"
     }
-  }
+  },
+  "completed": true
 }

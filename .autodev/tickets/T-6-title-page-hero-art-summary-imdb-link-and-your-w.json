@@ -3,8 +3,8 @@
   "slug": "title-page-hero-art-summary-imdb-link-and-your-w",
   "type": "feature",
   "title": "Title page: hero art, summary, IMDb link, and your why",
-  "stage": "intake",
-  "status": "triage",
+  "stage": "gate",
+  "status": "awaiting_approval",
   "spec": "A page per title: backdrop as hero, poster, title (and romaji/English both, for anime), year, kind, genres, runtime or episode count, the summary, and the 'why' Evan recorded when adding it. Outbound IMDb link built from imdb_id. Actions: mark watched (hands off to T-9), edit why, remove from list, move to top of queue. Reads as a page worth landing on, not a data dump. ACCEPT: every field present renders, every field absent degrades without a hole in the layout, and the IMDb link opens the right title.",
   "pipeline_version": "feature@v1",
   "modifiers": [],
@@ -23,7 +23,11 @@
     "monitor"
   ],
   "passport": [
-    "2026-09-05 created as feature \"Title page: hero art, summary, IMDb link, and your why\" on feature@v1 by agent:claude(on-behalf:evan,session-01PKVMkM)"
+    "2026-09-05 advanced queue → locate · queue on unrecorded",
+    "2026-09-05 advanced locate → plan · locate on unrecorded",
+    "2026-09-05 advanced plan → build · plan on unrecorded",
+    "2026-09-05 advanced build → auto-review · build on unrecorded",
+    "2026-09-05 advanced auto-review → gate · auto-review on unrecorded"
   ],
   "assignees": {},
   "links": {
@@ -33,7 +37,7 @@
     "T-4"
   ],
   "gates": {
-    "spec_ready": false,
+    "spec_ready": true,
     "merge": false,
     "accept": false,
     "deploy": false,
@@ -47,5 +51,106 @@
     "validator_passed": false,
     "attempts": 0
   },
-  "history": []
+  "history": [
+    {
+      "from": "intake",
+      "to": "refine",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:35:58.777Z"
+    },
+    {
+      "from": "refine",
+      "to": "queue",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:35:58.884Z"
+    },
+    {
+      "from": "queue",
+      "to": "locate",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:35:58.940Z"
+    },
+    {
+      "from": "locate",
+      "to": "plan",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:35:58.990Z"
+    },
+    {
+      "from": "plan",
+      "to": "build",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:35:59.041Z"
+    },
+    {
+      "from": "build",
+      "to": "auto-review",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:39:51.518Z"
+    },
+    {
+      "from": "auto-review",
+      "to": "gate",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:39:51.683Z"
+    }
+  ],
+  "receipts": {
+    "intake": {
+      "evidence": "INTAKE: feature, --intent T-1, --after T-4 (shipped). No duplicate. T-5 registered #/title/{id} with a placeholder that names this ticket.",
+      "kind": "other",
+      "fingerprint": "INTAKE: feature, --intent T-1, --after T-4 (shipped). No duplicate. T-5 registered #/title/{id} with a placeholder that names this ticket.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:35:58.775Z",
+      "model": "unrecorded"
+    },
+    "refine": {
+      "evidence": "Spec at .autodev/specs/T-6.md, 10 ACs. Carries the games amendment explicitly rather than leaving it to be remembered: AC4 (IMDb vs IGDB, and NO link row rather than a dead one) and AC5 (a game is played, not watched, while the stored status stays 'seen'). AC10 exists because every field on this page is optional in the schema — a title with no backdrop, summary, genres or why must still render without holes, which is the failure mode a hero-image layout has. AC6 specifies that clearing why stores NULL rather than an empty string, so the 'has a why' test stays a single truthiness check everywhere else. AC2 requires the romaji/English pair NOT be duplicated when equal, which is the common case.",
+      "kind": "other",
+      "fingerprint": "Spec at .autodev/specs/T-6.md, 10 ACs. Carries the games amendment explicitly rather than leaving it to be remembered: AC4 (IMDb vs IGDB, and NO link row rather than a dead one) and AC5 (a game is played, not watched, while the stored status stays 'seen'). AC10 exists because every field on this page is optional in the schema — a title with no backdrop, summary, genres or why must still render without holes, which is the failure mode a hero-image layout has. AC6 specifies that clearing why stores NULL rather than an empty string, so the 'has a why' test stays a single truthiness check everywhere else. AC2 requires the romaji/English pair NOT be duplicated when equal, which is the common case.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:35:58.832Z",
+      "model": "unrecorded"
+    },
+    "queue": {
+      "evidence": "QUEUED: dispatchable — T-4 shipped. T-9 waits on this one.",
+      "kind": "other",
+      "fingerprint": "QUEUED: dispatchable — T-4 shipped. T-9 waits on this one.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:35:58.937Z",
+      "model": "unrecorded"
+    },
+    "locate": {
+      "evidence": "LOCATE. What exists: GET /api/titles returns serialised rows already carrying a derived link + link_label (backend/titles.py, T-4) — so AC4 is mostly satisfied by the serialiser rather than by this page, which only has to render nothing when link is null. detail (JSON) holds per-kind extras: runtime/episodes/seasons/status from TMDB, studio/season/format/title_romaji/title_english from AniList, platforms/developer/igdb_url from IGDB — AC3 reads from there. base.css supplies .poster (2:3), .scrim, .kind, .empty, .btn, .field and the motion tokens. The router's regex route with capture groups is already registered by T-5 pointing at a placeholder. WHAT IS MISSING and this ticket must add: there is no GET for a SINGLE title and no PATCH at all — T-4 built list/create/delete only. Risks: (1) every display field is nullable in the schema, so AC10 is the default case not the edge case; (2) queue_position is gap-tolerant, so 'move to top' must compute min-10 rather than renumber, or it fights T-7's future reordering; (3) the backdrop is 1280x720 while the poster is 2:3 — the hero must not stretch either.",
+      "kind": "other",
+      "fingerprint": "LOCATE. What exists: GET /api/titles returns serialised rows already carrying a derived link + link_label (backend/titles.py, T-4) — so AC4 is mostly satisfied by the serialiser rather than by this page, which only has to render nothing when link is null. detail (JSON) holds per-kind extras: runtime/episodes/seasons/status from TMDB, studio/season/format/title_romaji/title_english from AniList, platforms/developer/igdb_url from IGDB — AC3 reads from there. base.css supplies .poster (2:3), .scrim, .kind, .empty, .btn, .field and the motion tokens. The router's regex route with capture groups is already registered by T-5 pointing at a placeholder. WHAT IS MISSING and this ticket must add: there is no GET for a SINGLE title and no PATCH at all — T-4 built list/create/delete only. Risks: (1) every display field is nullable in the schema, so AC10 is the default case not the edge case; (2) queue_position is gap-tolerant, so 'move to top' must compute min-10 rather than renumber, or it fights T-7's future reordering; (3) the backdrop is 1280x720 while the poster is 2:3 — the hero must not stretch either.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:35:58.989Z",
+      "model": "unrecorded"
+    },
+    "plan": {
+      "evidence": "PLAN: (1) GET /api/titles/{id} and PATCH /api/titles/{id} accepting why and a move-to-top action; (2) the title view — hero with scrim, poster, meta, per-kind detail line, summary, why; (3) inline why editing; (4) not-found page; (5) component classes into base.css. DECISIONS: move-to-top computes MIN(queue_position) - 10 rather than renumbering every row, which keeps the gap-tolerant scheme T-7 depends on and makes the write O(1); PATCH takes a sparse body so a future ticket can add fields without a new endpoint; an empty why is stored as NULL so 'has a why' remains one truthiness test across the carousel caption, the grid card and this page; and the kind-to-verb mapping lives in ONE place (a small lookup) so T-9's rating flow reuses it instead of re-deciding that games are played.",
+      "kind": "other",
+      "fingerprint": "PLAN: (1) GET /api/titles/{id} and PATCH /api/titles/{id} accepting why and a move-to-top action; (2) the title view — hero with scrim, poster, meta, per-kind detail line, summary, why; (3) inline why editing; (4) not-found page; (5) component classes into base.css. DECISIONS: move-to-top computes MIN(queue_position) - 10 rather than renumbering every row, which keeps the gap-tolerant scheme T-7 depends on and makes the write O(1); PATCH takes a sparse body so a future ticket can add fields without a new endpoint; an empty why is stored as NULL so 'has a why' remains one truthiness test across the carousel caption, the grid card and this page; and the kind-to-verb mapping lives in ONE place (a small lookup) so T-9's rating flow reuses it instead of re-deciding that games are played.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:35:59.040Z",
+      "model": "unrecorded"
+    },
+    "build": {
+      "evidence": "BUILT AND PROVEN IN A BROWSER — .autodev/evidence/T-6/build.md with three screenshots (anime, game, sparse). All 10 ACs pass against live data. AC3 proven across three kinds with ZERO empty labels: anime got Studio Sunrise / Spring 1998 / 26 episodes, the game got Team Cherry / 10 platforms, the series got 62 episodes. AC4 proven in all three states — IGDB link for the game, IMDb for the series, and NO link element at all for a title with neither. AC5: 'Mark as played' on the game, 'Mark as watched' elsewhere, stored status untouched. AC6: edited a missing why in place, survived reload, and clearing it stored SQLite null (typeof 'null'), not an empty string. AC7 moved NieR: Automata to the front of the wall via MIN(queue_position)-10 with no other row renumbered. AC8 removed and the id 404s afterwards. AC9 gives a real not-found page with a way back. AC10: a row with no backdrop, summary, genres, why, year or link still renders a complete 166px body with no holes.",
+      "kind": "other",
+      "fingerprint": "BUILT AND PROVEN IN A BROWSER — .autodev/evidence/T-6/build.md with three screenshots (anime, game, sparse). All 10 ACs pass against live data. AC3 proven across three kinds with ZERO empty labels: anime got Studio Sunrise / Spring 1998 / 26 episodes, the game got Team Cherry / 10 platforms, the series got 62 episodes. AC4 proven in all three states — IGDB link for the game, IMDb for the series, and NO link element at all for a title with neither. AC5: 'Mark as played' on the game, 'Mark as watched' elsewhere, stored status untouched. AC6: edited a missing why in place, survived reload, and clearing it stored SQLite null (typeof 'null'), not an empty string. AC7 moved NieR: Automata to the front of the wall via MIN(queue_position)-10 with no other row renumbered. AC8 removed and the id 404s afterwards. AC9 gives a real not-found page with a way back. AC10: a row with no backdrop, summary, genres, why, year or link still renders a complete 166px body with no holes.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:39:51.515Z",
+      "model": "unrecorded"
+    },
+    "auto-review": {
+      "evidence": "REVIEWED — one finding, in this ticket's own process rather than its logic, and it is worth keeping. main.js referenced titleView while its import line was missing (an edit script threw before writing it), and NPM RUN BUILD REPORTED SUCCESS ANYWAY — the app would have died at runtime with 'titleView is not defined'. It was caught by noticing the bundle SHRANK from 13.68kB to 13.62kB after supposedly adding two modules, then grepping the bundle for strings only the new view contains; both were missing. After the real import: 18.68kB, both present. Recorded in the evidence as a repeatable check — a green Vite build is not proof a module is wired, and grepping the bundle for a unique string costs nothing. Decisions standing: move-to-top writes MIN-10 rather than renumbering, preserving the gap-tolerant scheme T-7's drag reordering needs and keeping the write O(1); PATCH takes a sparse body so T-9 adds stars and review there rather than growing another endpoint; an empty why stores NULL so 'has a why' stays one truthiness test across three screens; and the kind-to-verb mapping lives in one file so T-9 cannot disagree with this page about games being played.",
+      "kind": "other",
+      "fingerprint": "REVIEWED — one finding, in this ticket's own process rather than its logic, and it is worth keeping. main.js referenced titleView while its import line was missing (an edit script threw before writing it), and NPM RUN BUILD REPORTED SUCCESS ANYWAY — the app would have died at runtime with 'titleView is not defined'. It was caught by noticing the bundle SHRANK from 13.68kB to 13.62kB after supposedly adding two modules, then grepping the bundle for strings only the new view contains; both were missing. After the real import: 18.68kB, both present. Recorded in the evidence as a repeatable check — a green Vite build is not proof a module is wired, and grepping the bundle for a unique string costs nothing. Decisions standing: move-to-top writes MIN-10 rather than renumbering, preserving the gap-tolerant scheme T-7's drag reordering needs and keeping the write O(1); PATCH takes a sparse body so T-9 adds stars and review there rather than growing another endpoint; an empty why stores NULL so 'has a why' stays one truthiness test across three screens; and the kind-to-verb mapping lives in one file so T-9 cannot disagree with this page about games being played.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:39:51.674Z",
+      "model": "unrecorded"
+    }
+  }
 }

@@ -186,6 +186,42 @@ async def add_title(payload: dict = Body(...)) -> JSONResponse:
         return JSONResponse(serialise(stored), status_code=201)
 
 
+@api.get("/titles/{title_id}")
+def get_title(title_id: int) -> JSONResponse:
+    rows = query("SELECT * FROM titles WHERE id = ?", (title_id,))
+    if not rows:
+        raise HTTPException(404, f"no title with id {title_id}")
+    return JSONResponse(serialise(rows[0]))
+
+
+@api.patch("/titles/{title_id}")
+def update_title(title_id: int, payload: dict = Body(...)) -> JSONResponse:
+    """A sparse update: send only what changes.
+
+    Deliberately sparse so later tickets (T-9's stars and review) can add fields here rather
+    than growing a new endpoint each time.
+    """
+    with connection() as conn:
+        row = conn.execute("SELECT * FROM titles WHERE id = ?", (title_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, f"no title with id {title_id}")
+
+        if "why" in payload:
+            # Empty means absent, not "". One truthiness test then answers "has a why?"
+            # everywhere — the carousel caption, the grid card and the title page.
+            why = (payload.get("why") or "").strip() or None
+            conn.execute("UPDATE titles SET why = ? WHERE id = ?", (why, title_id))
+
+        if payload.get("move_to_top"):
+            # MIN - 10 rather than renumbering every row: O(1), and it preserves the
+            # gap-tolerant scheme T-7's drag reordering is built on.
+            floor = conn.execute("SELECT COALESCE(MIN(queue_position), 10) FROM titles").fetchone()[0]
+            conn.execute("UPDATE titles SET queue_position = ? WHERE id = ?", (floor - 10, title_id))
+
+        updated = conn.execute("SELECT * FROM titles WHERE id = ?", (title_id,)).fetchone()
+    return JSONResponse(serialise(updated))
+
+
 @api.delete("/titles/{title_id}")
 def remove_title(title_id: int) -> JSONResponse:
     """Remove a title. Cached artwork is deliberately left alone — files are addressed by

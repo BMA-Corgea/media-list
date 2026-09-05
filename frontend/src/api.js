@@ -21,6 +21,8 @@ async function request(path, options = {}) {
 export const api = {
   health: () => request('/api/health'),
   search: (q, signal) => request(`/api/search?q=${encodeURIComponent(q)}`, { signal }),
+  title: (id) => request(`/api/titles/${id}`),
+  patch: (id, changes) => request(`/api/titles/${id}`, { method: 'PATCH', body: JSON.stringify(changes) }),
   titles: (status) => request(`/api/titles${status ? `?status=${status}` : ''}`),
   add: (candidate) => request('/api/titles', { method: 'POST', body: JSON.stringify(candidate) }),
   remove: (id) => request(`/api/titles/${id}`, { method: 'DELETE' }),

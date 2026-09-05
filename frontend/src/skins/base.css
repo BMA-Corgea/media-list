@@ -325,6 +325,57 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .caption__why { margin: 8px auto 0; max-width: 46ch; color: var(--muted); font-style: italic; }
 .caption__pos { margin: 10px 0 0; color: var(--faint); font-size: 12px; letter-spacing: .08em; }
 
+
+/* ── the title page ─────────────────────────────────────────────────────────────────
+   Every display field on a title is nullable, so each block here is rendered only when it
+   has something to say — the sparse case is the DEFAULT, not the edge.                  */
+.page--title { padding-top: 0; }
+.hero {
+  position: relative;
+  display: flex; align-items: flex-end; gap: 26px;
+  min-height: 340px;
+  margin: 0 -22px 26px;
+  padding: 34px 22px 26px;
+  background: var(--surface-2) center/cover no-repeat;
+  border-bottom: 1px solid var(--line);
+}
+/* Without art the scrim would darken a flat panel for no reason. */
+.hero:not(.hero--art) .scrim { display: none; }
+.hero > * { position: relative; }
+.hero__poster { width: 190px; flex: 0 0 190px; }
+.hero__head { padding-bottom: 6px; }
+/* Over artwork the text needs its own contrast; on a plain ground it must not go white. */
+.hero--art .hero__head { color: #fff; text-shadow: 0 1px 14px rgba(0, 0, 0, .75); }
+.hero--art .hero__head .kind { background: rgba(255, 255, 255, .16); color: #fff; }
+
+.title__name { margin: 8px 0 0; font: 600 34px/1.1 var(--font-display); letter-spacing: -.02em; }
+.title__alt  { margin: 6px 0 0; opacity: .8; font-size: 14px; }
+.title__year { margin: 6px 0 0; opacity: .75; }
+
+.title__body { max-width: 760px; }
+.title__summary { font-size: 16px; line-height: 1.6; margin: 0 0 24px; }
+
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px 26px; margin: 0 0 28px; }
+.fact dt { color: var(--muted); font-size: 11px; letter-spacing: .09em; text-transform: uppercase; }
+.fact dd { margin: 3px 0 0; }
+
+.why { border-left: 2px solid var(--accent); padding-left: 16px; margin: 0 0 28px; }
+.why .section-title { margin-bottom: 8px; }
+.why__text { margin: 0 0 10px; font-size: 16px; font-style: italic; }
+.why__text--empty { color: var(--faint); font-style: normal; }
+.why__edit { display: flex; gap: 8px; align-items: center; }
+.why__edit .field { flex: 1 1 auto; }
+
+.actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.actions .btn { text-decoration: none; }
+.actions .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+@media (max-width: 700px) {
+  .hero { flex-direction: column; align-items: flex-start; }
+  .hero__poster { width: 130px; flex-basis: 130px; }
+  .title__name { font-size: 26px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }

@@ -8,6 +8,7 @@ import { skinPicker } from './skins.js';
 import { route, start, navigate, current } from './router.js';
 import { listView } from './views/list.js';
 import { homeView } from './views/home.js';
+import { titleView } from './views/title.js';
 import { addView } from './views/add.js';
 
 const NAV = [
@@ -40,13 +41,7 @@ function shell() {
 route('', homeView);
 route('list', listView);
 route('add', addView);
-// T-6 fills this in; registered here so the carousel has somewhere to open to.
-route(/^title\/(\d+)$/, async (id) => {
-  const node = document.createElement('main');
-  node.className = 'page';
-  node.innerHTML = `<div class="empty"><h2>Title page</h2><p>Arrives with T-6. (id ${id})</p></div>`;
-  return node;
-});
+route(/^title\/(\d+)$/, titleView);
 
 const app = document.querySelector('#app');
 const { bar, nav } = shell();

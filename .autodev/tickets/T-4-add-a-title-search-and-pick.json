@@ -4,7 +4,7 @@
   "type": "feature",
   "title": "Add a title: search-and-pick",
   "stage": "monitor",
-  "status": "observing",
+  "status": "complete",
   "spec": "The primary success criterion. A search field; typing shows candidate cards WITH POSTERS as you type (debounced); clicking one adds it — title, year, kind, summary, artwork, IMDb link and genres all populated from T-3 with zero typing. Optional 'why' field, free text, one line. New titles append to the end of the queue with status=queued. Duplicate tmdb_id is refused with a clear message pointing at the existing entry. HARD RULE: no field for summary, poster URL, or IMDb link is ever presented to the user — if a human is typing metadata this ticket has failed. ACCEPT: adding Cowboy Bebop takes one search and one click, and the resulting record carries poster, backdrop, summary, year, kind and a working IMDb link.",
   "pipeline_version": "feature@v1",
   "modifiers": [],
@@ -23,11 +23,11 @@
     "monitor"
   ],
   "passport": [
-    "2026-09-05 advanced verify → uat · verify on unrecorded",
     "2026-09-05 gate accept cleared by agent:claude(on-behalf:evan,GA-1) on go-ahead GA-1 (\"Just loop through it. Go ahead and build it. I don't need to\")",
     "2026-09-05 advanced uat → release · uat on unrecorded",
     "2026-09-05 gate deploy cleared by policy:unattended",
-    "2026-09-05 advanced release → monitor · release on unrecorded"
+    "2026-09-05 advanced release → monitor · release on unrecorded",
+    "2026-09-05 pipeline complete at monitor"
   ],
   "assignees": {},
   "links": {
@@ -48,8 +48,9 @@
   "overrides": {},
   "risk": "medium",
   "loop": {
-    "validator_passed": false,
-    "attempts": 0
+    "validator_passed": true,
+    "attempts": 0,
+    "evidence": "MONITOR — nothing deployed to watch: media-list runs on demand on loopback, no daemon, no remote environment, so no uptime or error rate could honestly be reported. Zero application errors observed at close. Regressions carried forward for later tickets are recorded in this ticket's evidence and in kb/CURRENT-WORK.md."
   },
   "history": [
     {
@@ -207,6 +208,15 @@
       "by": "agent:claude(on-behalf:evan,GA-1)",
       "at": "2026-09-05T04:20:47.351Z",
       "model": "unrecorded"
+    },
+    "monitor": {
+      "evidence": "MONITOR — nothing deployed to watch: media-list runs on demand on loopback, no daemon, no remote environment, so no uptime or error rate could honestly be reported. Zero application errors observed at close. Regressions carried forward for later tickets are recorded in this ticket's evidence and in kb/CURRENT-WORK.md.",
+      "kind": "other",
+      "fingerprint": "MONITOR — nothing deployed to watch: media-list runs on demand on loopback, no daemon, no remote environment, so no uptime or error rate could honestly be reported. Zero application errors observed at close. Regressions carried forward for later tickets are recorded in this ticket's evidence and in kb/CURRENT-WORK.md.",
+      "by": "agent:claude(on-behalf:evan,GA-1)",
+      "at": "2026-09-05T04:31:23.952Z",
+      "model": "unrecorded"
     }
-  }
+  },
+  "completed": true
 }
