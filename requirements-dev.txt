@@ -1,4 +1,6 @@
 # Test-only dependencies. Kept out of requirements.txt so the runtime install (what
 # start.sh needs) stays four lines; only scripts/test.sh installs this file.
 pytest>=8.0,<10
+# Invoked only by `scripts/test.sh --cov` (opt-in, off by default) — see that script's
+# header. If that flag ever goes away, this line should go with it.
 pytest-cov>=6.0,<8
