@@ -26,12 +26,20 @@ async function request(path, options = {}) {
  * thousand-row preview reports where it is up to instead of being a spinner (T-15 AC3).
  * `request()` above cannot be used for it: that awaits `.json()`, which is the one thing
  * that has to not happen here.
+ *
+ * `signal` IS NOT OPTIONAL IN SPIRIT (T-15 round 2, F2). A preview holds the connection open
+ * for as long as the resolver runs, and the server only learns the screen is gone when this
+ * side closes the request — that disconnect is what cancels hundreds of in-flight TMDB/IGDB
+ * searches. Without a signal there is nothing that can ever close it, so "walking away stops
+ * the searches" is only half true no matter what the server does. `search` below has passed
+ * one since T-4; this is the same pattern, on the call where it actually costs quota.
  */
-async function ndjson(path, payload, onEvent) {
+async function ndjson(path, payload, onEvent, signal) {
   const response = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    signal,
   });
   if (!response.ok) {
     // A failure BEFORE the first byte is still a normal HTTP error, so it is unwrapped the
@@ -81,7 +89,7 @@ export const api = {
   titles: (status) => request(`/api/titles${status ? `?status=${status}` : ''}`),
   add: (candidate) => request('/api/titles', { method: 'POST', body: JSON.stringify(candidate) }),
   move: (id, neighbours) => request(`/api/titles/${id}/move`, { method: 'POST', body: JSON.stringify(neighbours) }),
-  importPreview: (text, onProgress) => ndjson('/api/import/preview', { text }, onProgress),
+  importPreview: (text, onProgress, signal) => ndjson('/api/import/preview', { text }, onProgress, signal),
   importCommit: (entries) => request('/api/import/commit', { method: 'POST', body: JSON.stringify({ entries }) }),
   remove: (id) => request(`/api/titles/${id}`, { method: 'DELETE' }),
 };

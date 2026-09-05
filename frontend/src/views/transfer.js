@@ -65,11 +65,18 @@ export async function transferView() {
   // needs a number that moves, and it needs it without a new component in the skins layer.
   const progress = Object.assign(document.createElement('p'), { className: 'hint' });
 
+  // Aborting a running preview is what tells the server the screen is gone; the server then
+  // cancels the searches still in flight. `page.cleanup` below is the router's unmount hook
+  // (T-15 F2) — the other half of "walking away stops the searches", and useless without it.
+  let inflight = null;
+  page.cleanup = () => inflight?.abort();
+
   preview.addEventListener('click', async () => {
     preview.disabled = true;
     preview.textContent = 'Resolving…';
     progress.textContent = 'Reading the file…';
     report.replaceChildren(progress);
+    inflight = new AbortController();
     try {
       // The preview streams: it says how many rows it has settled while it is still working
       // on the rest, so the page stays honest about a long import instead of hanging on a
@@ -86,8 +93,10 @@ export async function transferView() {
       });
       renderReport(result);
     } catch (error) {
-      report.innerHTML = `<p class="hint bad">${error.message}</p>`;
+      // An abort is this screen being left, not a failure: there is nobody to tell.
+      if (error.name !== 'AbortError') report.innerHTML = `<p class="hint bad">${error.message}</p>`;
     } finally {
+      inflight = null;
       preview.disabled = false;
       preview.textContent = 'Preview import';
     }
