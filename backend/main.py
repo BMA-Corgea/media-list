@@ -498,8 +498,9 @@ class _PreviewRun:
 
     The second branch is the LIKELY one in production: uvicorn awaits `flow.drain()` whenever
     the write buffer is paused, which is the state a thousand-row preview with a closing
-    client is in. Measured on 600 rows: the in-anext shape stopped at 232 searches; the
-    in-send shape let the remaining ~380 run to completion, three times out of four.
+    client is in. Reproduced against this code at 600 rows, disconnecting after 40 searches:
+    the in-anext shape stopped dead; the in-send shape sent 1072 more searches to TMDB and
+    IGDB for a client that had already gone.
 
     So cancellation hangs off `StreamingResponse(background=...)` instead. `__call__` awaits
     `self.background()` AFTER the task group unwinds, and an anyio cancel scope absorbs its
