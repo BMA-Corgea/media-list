@@ -10,7 +10,7 @@ count, a season, or the romaji/English title pair. It may not touch `title`, `ye
 
 from __future__ import annotations
 
-from .base import client
+from .base import ANILIST_LIMIT, client
 
 ENDPOINT = "https://graphql.anilist.co"
 
@@ -37,7 +37,10 @@ async def enrich(title: str) -> dict:
     """
     try:
         async with client() as http:
-            response = await http.post(ENDPOINT, json={"query": QUERY, "variables": {"search": title}})
+            async with ANILIST_LIMIT.slot():
+                response = await http.post(
+                    ENDPOINT, json={"query": QUERY, "variables": {"search": title}}
+                )
             if not response.is_success:
                 return {}
             media = (response.json().get("data") or {}).get("Media")

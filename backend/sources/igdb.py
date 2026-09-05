@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from ..config import config
-from .base import SourceError, client, raise_for
+from .base import IGDB_LIMIT, SourceError, client, raise_for
 
 TOKEN_URL = "https://id.twitch.tv/oauth2/token"
 BASE = "https://api.igdb.com/v4"
@@ -63,14 +63,15 @@ async def token(force: bool = False) -> str:
             return cached
 
     async with client() as http:
-        response = await http.post(
-            TOKEN_URL,
-            params={
-                "client_id": config.igdb_client_id,
-                "client_secret": config.igdb_client_secret,
-                "grant_type": "client_credentials",
-            },
-        )
+        async with IGDB_LIMIT.slot():
+            response = await http.post(
+                TOKEN_URL,
+                params={
+                    "client_id": config.igdb_client_id,
+                    "client_secret": config.igdb_client_secret,
+                    "grant_type": "client_credentials",
+                },
+            )
         raise_for("igdb", response)
         payload = response.json()
 
@@ -83,16 +84,21 @@ async def token(force: bool = False) -> str:
 
 async def _query(body: str, *, retry: bool = True) -> list[dict]:
     """POST an apicalypse query. A 401 means the cached token died; refresh once and retry."""
+    # `token()` may itself go to Twitch, and it must do so BEFORE the slot is taken: an
+    # unrelated outbound call made while holding an open-request slot would have the limiter
+    # counting one request and two leaving.
+    bearer = await token()
     async with client() as http:
-        response = await http.post(
-            f"{BASE}/games",
-            content=body,
-            headers={
-                "Client-ID": config.igdb_client_id or "",
-                "Authorization": f"Bearer {await token()}",
-                "Accept": "application/json",
-            },
-        )
+        async with IGDB_LIMIT.slot():
+            response = await http.post(
+                f"{BASE}/games",
+                content=body,
+                headers={
+                    "Client-ID": config.igdb_client_id or "",
+                    "Authorization": f"Bearer {bearer}",
+                    "Accept": "application/json",
+                },
+            )
         if response.status_code == 401 and retry:
             await token(force=True)
             return await _query(body, retry=False)
