@@ -1,6 +1,6 @@
 # media-list — handoff
 
-**Date:** 2026-09-05 · **Branch:** `main` (16 commits, **pushed**) · **HEAD:** `c768c31`
+**Date:** 2026-09-05 · **Branch:** `main` (18 commits, **pushed**) · **HEAD:** `e31c84d`
 **Remote:** `https://github.com/BMA-Corgea/media-list.git` — public, `main` is up to date
 (local and origin are identical; nothing to push)
 **Restore point:** every unit of work is its own commit; `git reset --hard <hash>` is the undo.
@@ -211,10 +211,11 @@ made the **entire 16-commit history public at once**. Audited from this session 
 
 **Still exposed — each needs a decision:**
 
-1. **`LICENSE` said `Copyright (c) 2026 <name>`.** Changed at HEAD to the GitHub org
-   `BMA-Corgea`, because a copyright line needs an identifiable holder and "the owner" is not
-   one. **Not pushed.** If the owner would rather have their full legal name, or a different
-   entity, this is a one-line edit.
+1. **`LICENSE` said `Copyright (c) 2026 <name>`. — RESOLVED.** It now reads
+   **`Copyright (c) 2026 GIMS Technologies`**, which is the owner's own answer, given on
+   2026-09-05 and applied in `e31c84d`. (I had provisionally put the GitHub org there;
+   that was a placeholder pending exactly this decision.) **Use "GIMS Technologies" as the
+   copyright holder anywhere else one is needed.**
 2. **Two commit messages still contain the name** — both inside `860d727` (T-10). Fixing
    these means **rewriting published history and force-pushing**, which is destructive and is
    the owner's call alone. Do not do it unprompted.

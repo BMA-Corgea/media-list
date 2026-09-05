@@ -11,7 +11,7 @@ T-1's success shape promised is built and proven.
 | Cold boot | ~9s from a fresh clone: venv, deps, frontend build, database, serving |
 | Screens | wall · queue · wheel · seen · add · import |
 | Sources | TMDB + AniList (screen), IGDB (games), Pexels (chrome only) |
-| Repo | github.com/BMA-Corgea/media-list — **committed locally, never pushed** |
+| Repo | github.com/BMA-Corgea/media-list — **public and pushed**; copyright holder is **GIMS Technologies** |
 
 ## Standing checks — cheap, and each one caught something real
 
@@ -26,7 +26,11 @@ T-1's success shape promised is built and proven.
 
 ## What is NOT done, and is genuinely open
 
-- **Never pushed.** 14 commits sit on local `main`. The GitHub repo is public and empty.
+- ~~Never pushed.~~ **Pushed 2026-09-05**; `main` is public at 18 commits. The credential
+  audit is in `kb/notes/handoff.md` §10 — all four API keys are absent from every commit, and
+  `.env`/`data/`/`*.db` have never been tracked. Two residual identifiers (the name inside two
+  commit messages, and the author email on every commit) are permanent unless the owner
+  chooses a history rewrite.
 - **Chromium only.** Every browser test used one engine.
 - **No automated test runner.** Every check was a real command, but they live in evidence
   documents rather than in something CI could run. Worth a ticket now that behaviour is
