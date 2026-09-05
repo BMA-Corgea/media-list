@@ -337,6 +337,18 @@ class _Lookups:
             return await _search_all(title)
 
     async def get(self, title: str) -> list[dict]:
+        # SHARED-TASK CANCELLATION TRAP (T-15 round 2, F6 — latent, not live).
+        # Every row that wants this title awaits the SAME task. `asyncio` propagates a
+        # cancellation from any one waiter INTO the task, which then fails every OTHER waiter
+        # with CancelledError — one row's problem becomes fifty rows' problem.
+        # Harmless today because every cancellation path here is wholesale: the whole preview
+        # is abandoned at once (`_PreviewRun.cancel`) and there is nobody left to be collateral
+        # damage. It stops being harmless the moment anything cancels ONE row — a per-row
+        # timeout, a partial retry, a "skip this title" button. The guard for that day is
+        # `await asyncio.shield(task)`, so a waiter walking away leaves the task running for
+        # the rest. Deliberately NOT added now: shielding cannot be tested without the
+        # per-row cancellation that does not exist yet, and untested cancellation code is
+        # worse than a named trap.
         key = " ".join(title.split()).casefold()
         task = self.tasks.get(key)
         if task is None:
@@ -668,6 +680,12 @@ async def import_commit(payload: dict = Body(...)) -> JSONResponse:
         task = fetched.get(key)
         if task is None:
             task = fetched[key] = asyncio.create_task(fetch_once(*key))
+        # SHARED-TASK CANCELLATION TRAP (T-15 round 2, F6 — latent, the second of two sites;
+        # `_Lookups.get` is the other and carries the full explanation). Every entry choosing
+        # this same title awaits the SAME task, so cancelling any one waiter cancels the task
+        # and fails all the others. Safe today because nothing cancels a single entry — the
+        # `except BaseException` below cancels the whole batch at once. A per-entry timeout
+        # would make it live, and `await asyncio.shield(task)` is the guard for that day.
         try:
             record = await task
         except (SourceError, HTTPException) as error:
