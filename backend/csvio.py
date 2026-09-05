@@ -1,10 +1,10 @@
 """CSV export and the resolver import.
 
-Evan has no existing list and intends to generate one with a chatbot, so the input is loose
+The owner has no existing list and intends to generate one with a chatbot, so the input is loose
 BY DESIGN. This is a resolver, not a loader: rows are matched against the sources, anything
 ambiguous comes back for a human choice, and nothing is dropped in silence.
 
-The column contract is published in README.md, which Evan has been told to rely on. It is
+The column contract is published in README.md, which the owner has been told to rely on. It is
 reproduced here as the single source and must not drift from that document.
 """
 
@@ -57,7 +57,7 @@ def export_rows(rows) -> str:
 def _clean(text: str) -> str:
     """Make chatbot output parseable without asking the user to tidy it first.
 
-    The README tells Evan to paste raw output, and raw output arrives with a BOM, or wrapped
+    The README tells the owner to paste raw output, and raw output arrives with a BOM, or wrapped
     in a ``` fence, or both. Refusing that would be technically correct and practically
     useless.
     """

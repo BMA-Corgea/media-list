@@ -1,7 +1,7 @@
 /**
  * The queue — one global order, filterable by kind.
  *
- * Evan's explicit choice: ONE queue, not a queue per genre. The filter chips narrow what is
+ * The owner's explicit choice: ONE queue, not a queue per genre. The filter chips narrow what is
  * on screen and never fork the order. That is why a move sends the ids of the rows it can
  * SEE rather than an index: the server places the title next to exactly those two, and every
  * row the filter is hiding keeps the position it already had.

@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS titles (
     genres          TEXT,            -- JSON array
     detail          TEXT,            -- JSON object: per-kind extras (platforms, studio, episodes…)
 
-    -- Why Evan wanted it. Free text, his words.
+    -- Why the owner wanted it. Free text, his words.
     why             TEXT,
 
     status          TEXT    NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'seen')),

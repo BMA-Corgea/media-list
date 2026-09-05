@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import httpx
 
-#: Generous, but bounded. Evan deprioritised speed on repo-tour; search here is typed into,
+#: Generous, but bounded. The owner deprioritised speed on repo-tour; search here is typed into,
 #: so a hung upstream must fail rather than hang the box someone is typing in.
 TIMEOUT = httpx.Timeout(connect=5.0, read=12.0, write=5.0, pool=5.0)
 

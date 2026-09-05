@@ -1,7 +1,7 @@
 /**
  * The wheel.
  *
- * Evan asked for this by name and asked for the animation to be good, so the motion is the
+ * The owner asked for this by name and asked for the animation to be good, so the motion is the
  * requirement here rather than decoration on a random number.
  *
  * The one rule that makes it honest: THE WINNER IS CHOSEN FIRST and the rotation is computed

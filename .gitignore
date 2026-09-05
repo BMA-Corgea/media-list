@@ -1,4 +1,4 @@
-# ── Evan's list is private; the app is public ───────────────────────────────
+# ── the owner's list is private; the app is public ───────────────────────────────
 # The database, the artwork cached for HIS titles, and any CSV export all
 # reveal what he watches. None of it belongs in a public repo.
 data/
@@ -28,3 +28,7 @@ __pycache__/
 *.log
 .cache/
 .DS_Store
+
+# factory ledger and generated day pages stay local (public repo, owner's request 2026-09-05)
+.autodev/
+kb/days/

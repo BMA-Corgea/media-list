@@ -5,7 +5,7 @@ second is the important one:
 
   1. The wall must render with the network off, and remote CDNs go away.
   2. Cached artwork IS the list. `data/` is gitignored precisely so that a public repository
-     never reveals what Evan watches — which is why nothing here may write into the
+     never reveals what the owner watches — which is why nothing here may write into the
      frontend's public tree.
 
 Files are content-addressed, so re-fetching the same image writes nothing.

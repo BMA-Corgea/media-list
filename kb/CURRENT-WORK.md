@@ -34,6 +34,6 @@ T-1's success shape promised is built and proven.
 - **Large-CSV import is untested.** A chatbot list of thousands of rows would make the
   per-row search dominate the preview.
 - **Test data on the list.** Akira, Outer Wilds and Attack on Titan were added by import
-  tests; NieR: Automata and Hollow Knight carry test ratings. Real titles, Evan's to curate.
+  tests; NieR: Automata and Hollow Knight carry test ratings. Real titles, the owner's to curate.
 - `pipelines.wiring` doctor warn is the unused `feature-regulated` pipeline — same benign
   warn as repo-tour.
