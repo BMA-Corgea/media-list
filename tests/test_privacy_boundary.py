@@ -97,8 +97,10 @@ def spa_endpoint(frontend_dist):
     """`backend.main.spa` itself, looked up from the live route table at call time.
 
     Calling the endpoint directly is the only way to test containment against the payload a
-    non-normalising client really sends (`curl --path-as-is`): every HTTP client in this
-    process collapses `..` before the request leaves it. Looked up rather than imported
+    non-normalising client really sends (`curl --path-as-is`): the in-process client this
+    suite uses (httpx, under TestClient) collapses `..` before the request leaves it, and
+    `kb/notes/handoff.md`'s manual curl check is the only thing that ever exercised the raw
+    form. Looked up rather than imported
     because `spa` is a closure defined inside `create_app()` — and looked up *per test*, so a
     harness that swaps the route in (T-13's proof that these tests can fail) is honoured.
     """

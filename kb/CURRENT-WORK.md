@@ -16,14 +16,16 @@ T-1's success shape promised is built and proven.
 
 ## Standing checks — cheap, and each one caught something real
 
-The first four rows are frozen into `scripts/test.sh` as of T-13 (`tests/test_privacy_boundary.py`,
-`tests/test_bundle.py`) — no longer tribal knowledge in an evidence file, an actual command
-that exits non-zero. The last two need a real browser to assert against and are T-14's job.
+The first four rows are frozen into `scripts/test.sh` as of T-13 — no longer tribal
+knowledge in an evidence file, an actual command that exits non-zero. Row by row:
+`tests/test_privacy_boundary.py` (rows 1–2), `tests/test_bundle.py` (row 3),
+`tests/test_csv_roundtrip.py` and `tests/test_import_atomicity.py` (row 4).
+The last two need a real browser to assert against and are T-14's job.
 
 | Check | Why it exists |
 | --- | --- |
 | `git check-ignore` on `data/`, `*.db`, `.env` | The privacy boundary is the point of the project |
-| SPA traversal payloads (`../../.env`) whenever routes or static mounts change | T-2's fallback served the real `.env` with live API keys |
+| SPA traversal payloads whenever routes or static mounts change — percent-encoded (`%2e%2e`), and the route called directly with a raw `../../.env`, because an HTTP client collapses a plain `../` before the app sees it | T-2's fallback served the real `.env` with live API keys |
 | Grep the built bundle for a string unique to new code | A green Vite build did not catch an unimported module |
 | CSV round-trip + import atomicity against the README contract | T-10's resolver defects (wrong-kind match, an all-or-nothing commit) |
 | Colour-literal grep across `base.css` | Keeps every surface re-skinnable by a skin written before it |

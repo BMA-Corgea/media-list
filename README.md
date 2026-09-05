@@ -164,6 +164,14 @@ skipped unless you ask for them:
 scripts/test.sh --live      # requires a real .env
 ```
 
+`--cov` prints a coverage report for `backend/` (`--cov=backend --cov-report=term-missing`)
+— useful for seeing what the suite does *not* freeze. It is a reading, not a gate: nothing
+fails on the number.
+
+```bash
+scripts/test.sh --cov
+```
+
 Any other argument is forwarded straight to `pytest` — `scripts/test.sh -k queue_order`,
 `scripts/test.sh -x`, and so on.
 
