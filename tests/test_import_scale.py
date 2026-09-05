@@ -23,6 +23,7 @@ amount of local concurrency can or should get around.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from contextlib import asynccontextmanager
@@ -105,8 +106,6 @@ def scale_sources(monkeypatch) -> dict:
 
 
 async def _sleep(seconds: float) -> None:
-    import asyncio
-
     await asyncio.sleep(seconds)
 
 
@@ -450,3 +449,37 @@ def test_a_failure_part_way_through_becomes_a_terminal_error_event(client, monke
     final = _stream(client, generate_csv(5))[-1]
     assert final["event"] == "error", f"expected a terminal error event, got {final!r}"
     assert "nothing was written" in final["detail"]
+
+
+def test_walking_away_from_a_preview_stops_the_searches(run_async, scale_sources):
+    """The half of AC3's design that is a claim about quota, not about the UI.
+
+    Streaming was chosen over a polled job id partly because cancellation comes free: a closed
+    tab should stop spending TMDB/IGDB requests, not finish a thousand-row preview for nobody.
+    Free is not the same as true, so it is measured — close the stream after the first progress
+    event and check that the search count stops climbing.
+    """
+    from backend import csvio
+    from backend.main import SEARCH_CONCURRENCY, _preview_events
+
+    rows, problems = csvio.parse(generate_csv(ROWS))
+
+    async def walk_away() -> tuple[int, int]:
+        events = _preview_events(rows, problems, set())
+        async for line in events:
+            if json.loads(line).get("event") == "progress":
+                break  # the tab closed
+        await events.aclose()
+
+        at_close = scale_sources["tmdb"] + scale_sources["igdb"]
+        # Far longer than the whole preview takes when it is allowed to run.
+        await asyncio.sleep(0.3)
+        return at_close, scale_sources["tmdb"] + scale_sources["igdb"]
+
+    at_close, later = run_async(walk_away())
+
+    assert at_close < ROWS * 2, "the whole preview had already run before the stream closed"
+    assert later - at_close <= SEARCH_CONCURRENCY, (
+        f"{later - at_close} more searches went out after the client walked away — an "
+        "abandoned preview is still spending upstream quota."
+    )
