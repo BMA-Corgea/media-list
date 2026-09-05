@@ -1,0 +1,30 @@
+# ── Evan's list is private; the app is public ───────────────────────────────
+# The database, the artwork cached for HIS titles, and any CSV export all
+# reveal what he watches. None of it belongs in a public repo.
+data/
+*.db
+*.db-journal
+# WAL sidecars hold committed rows that have not been checkpointed yet — they are
+# as revealing as the database itself, and only the data/ rule was covering them.
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+media-list-export*.csv
+
+# ── secrets ────────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ── build + tooling ────────────────────────────────────────────────────────
+node_modules/
+dist/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log
+.cache/
+.DS_Store
