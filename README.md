@@ -142,6 +142,33 @@ reach a phone, it goes through the GUTS Bridge rather than binding wider.
 
 ---
 
+## Testing
+
+```bash
+scripts/test.sh
+```
+
+One command, the whole suite: API tests (star validation, queue reorder arithmetic, CSV
+export/import round-trip, import atomicity), the privacy boundary (`.gitignore` coverage
+and the SPA traversal containment check), and the built-bundle content check. Cold-boot safe
+— creates `.venv` and installs `requirements-dev.txt` if they're missing — and exits
+non-zero on any failure. No port is bound; the API is driven in-process, so it never
+collides with a server already running on `7799`.
+
+The suite runs against a throwaway database (never `data/media-list.db`) and stubs every
+metadata source by default, so it needs no `.env` and never reaches the network. A separate,
+**opt-in** set of tests hits the real TMDB/AniList/IGDB APIs with real credentials; they are
+skipped unless you ask for them:
+
+```bash
+scripts/test.sh --live      # requires a real .env
+```
+
+Any other argument is forwarded straight to `pytest` — `scripts/test.sh -k queue_order`,
+`scripts/test.sh -x`, and so on.
+
+---
+
 ## Skins
 
 The look is swappable. A skin is **one CSS file** at `frontend/src/skins/<name>.css` whose
