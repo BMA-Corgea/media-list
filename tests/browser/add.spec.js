@@ -67,15 +67,20 @@ async function mockSearch(page, results) {
   await page.route('**/api/search**', (route) => route.fulfill({ json: searchEnvelope(results) }));
 }
 
+/** Returns the `<source>:<source_id>` keys the page actually asked for, so a test can
+ * assert the description screen was NOT fetched as easily as that it was. */
 async function mockDetails(page, byKey) {
+  const hits = [];
   await page.route('**/api/details/**', (route) => {
     const url = new URL(route.request().url());
     // pathname is "/api/details/<source>/<source_id>" — split gives ['', 'api', 'details', source, id].
     const [, , , source, sourceId] = url.pathname.split('/');
+    hits.push(`${source}:${sourceId}`);
     const record = byKey[`${source}:${sourceId}`];
     if (!record) return route.fulfill({ status: 404, json: { detail: `no fixture for ${source}:${sourceId}` } });
     return route.fulfill({ json: record });
   });
+  return hits;
 }
 
 /** Records every POST to /api/titles and answers it with a fabricated stored row, without
@@ -160,15 +165,28 @@ test('AC2 — Back adds nothing and returns to search; the browser\'s own back b
   expect(adds.posts).toEqual([]);
 });
 
-test('AC3 — the + button adds directly, and sends the same payload shape the description screen sends', async ({ page, seed }) => {
+test('AC3 — the + button adds directly, stays put, and sends the same payload shape the description screen sends', async ({ page, seed }) => {
   seed([]);
   const adds = captureAdds(page);
   await adds.install();
   await mockSearch(page, [DUNE]);
+  // Pressing `+` must never open the description screen, so this mock should never be hit.
+  // It is installed precisely so that a regression cannot hide behind an unmocked call
+  // (round 2, F2): with the nested-button trap kb/wiki/lessons.md records put back —
+  // `open.append(add)` instead of `card.append(open, add)` — the `+` click also bubbles to
+  // `.card__open` and navigates. With `/api/details` unmocked, that navigation was still in
+  // flight against a request this server can only fail, while the mocked POST had already
+  // answered; so the assertions below ran against the OLD, still-mounted screen and passed,
+  // mid-navigation to a broken one.
+  const detailHits = await mockDetails(page, { 'tmdb:438631': detailsFor(DUNE) });
 
   await search(page, 'Dune');
   const card = page.locator('.card--pick');
   await card.locator('.card__add').click();
+
+  // The side effect that must NOT happen, asserted directly rather than inferred from
+  // whichever piece of DOM the test happens to read first.
+  await expect(page).toHaveURL(/#\/add$/);
 
   await expect(page.locator('.hint.ok')).toContainText('Added');
   await expect(card).toHaveClass(/is-added/);
@@ -180,6 +198,11 @@ test('AC3 — the + button adds directly, and sends the same payload shape the d
   expect(adds.posts).toHaveLength(1);
   expect(adds.posts[0]).toMatchObject({ source: 'tmdb', source_id: '438631', media_type: 'movie' });
   expect(Object.keys(adds.posts[0]).sort()).toEqual(['media_type', 'source', 'source_id', 'why']);
+
+  // Still on the search screen once everything has settled, and the description screen was
+  // never so much as asked for.
+  await expect(page).toHaveURL(/#\/add$/);
+  expect(detailHits).toEqual([]);
 });
 
 test('AC3 — the description screen\'s Add sends the same payload shape as the + button', async ({ page, seed }) => {
