@@ -42,12 +42,14 @@ The last two need a real browser to assert against and are T-14's job.
   `.env`/`data/`/`*.db` have never been tracked. Two residual identifiers (the name inside two
   commit messages, and the author email on every commit) are permanent unless the owner
   chooses a history rewrite.
-- **Two engines, not three (T-14 — BLOCKED on the owner).** Chromium 10/10 and Firefox 10/10
-  pass via `scripts/test.sh --browsers`. **WebKit cannot launch on this machine**: it needs
+- **Two engines by decision, not three (T-14 — SHIPPED).** The owner chose it, verbatim:
+  *"Go with (a), two engines is fine."* AC2 amended in `.autodev/specs/T-14.md`. Chromium and
+  Firefox pass 20/20 via `scripts/test.sh --browsers`. **WebKit cannot launch on this machine**: it needs
   `libjxl.so.0.8` and `libbacktrace.so.0`, and Ubuntu 24.04 ships only `libjxl0.7` with no
   `libbacktrace` package at all — so `playwright install-deps` would not fix it either. The
-  webkit project stays wired in and the command **fails loudly** rather than skipping. Awaiting
-  the owner's call: amend AC2 to two engines · try an older Playwright build · containerise.
+  webkit project stays wired in and the command **fails loudly** rather than skipping, so the
+  gap stays visible rather than becoming two engines quietly called three. Playwright's WebKit
+  on Linux is not Safari in any case — the signal given up here was always limited.
 - ~~Large-CSV import is untested.~~ **Done 2026-09-05 (T-15).** Bounded concurrency plus a
   per-run lookup cache: 1000 rows over 50 distinct titles now costs 100 searches, not 2000.
   Atomicity is unchanged and proved *structurally* — no `await` inside any `with connection()`
