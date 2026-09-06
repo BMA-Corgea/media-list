@@ -1,5 +1,7 @@
 /**
- * T-14, AC2 — the coverflow wall on all three engines.
+ * T-14, AC2 — the coverflow wall on every engine this host can run (Chromium and Firefox;
+ * the webkit project stays wired in playwright.config.js so the gap stays visible, see
+ * .autodev/specs/T-14.md).
  *
  * This is the riskiest surface in the app: Pointer Events, `setPointerCapture`, and a 3D
  * transform recomputed every frame (frontend/src/carousel.js). Every assertion here reads a
@@ -79,10 +81,15 @@ test('keyboard steps match the buttons, including Home and End', async ({ page }
 
 test('a drag past the halfway point advances exactly one card once velocity is zero', async ({ page }) => {
   const centre = await stageCentre(page);
-  // CARD_STEP is 168px; 90px clears the 50% (84px) threshold. `settleMs` forces the app's
-  // own velocity term to exactly zero (a same-position pointermove makes its dx term 0
-  // regardless of elapsed time) — this is a pure "where did you drop it" case, deliberately
-  // free of momentum so it isolates position handling from the next test's throw.
+  // CARD_STEP is 168px, so a 90px drag is position 90/168 = 0.536 — past the 0.5 (84px)
+  // snap point, by arithmetic with no timing term in it. `settleMs` sends a real
+  // zero-delta `pointermove` before `pointerup`, which forces the app's own velocity to
+  // exactly zero (support/gestures.js documents the mechanism and the measurement), so this
+  // is a pure "where did you drop it" case, deliberately free of momentum and isolated from
+  // the next test's throw. Until T-14 round 2 `settleMs` was silently dropped by `drag()`
+  // and this gesture actually released at |velocity| 0.030–0.061 — ABOVE MIN_VELOCITY
+  // (0.02) on both engines — so the card was carried to ~0.96 by momentum and this test
+  // passed for a reason its own comment denied.
   await drag(page, { from: centre, to: { x: centre.x - 90, y: centre.y }, steps: 12, settleMs: 60 });
   await expect(page.locator('.caption__title')).toHaveText('Bravo');
   await expect(centreCard(page)).toHaveAttribute('data-index', '1');
@@ -90,8 +97,10 @@ test('a drag past the halfway point advances exactly one card once velocity is z
 
 test('a quick flick carries further than an equal-distance drag with no velocity (momentum)', async ({ page }) => {
   const centre = await stageCentre(page);
-  // 40px alone is well under the 84px snap threshold — a drag that ends with zero velocity
-  // must fall back to the start card.
+  // 40px alone is position 40/168 = 0.238, well under the 0.5 snap point — a drag that ends
+  // with zero velocity must fall back to the start card. `settleMs` is what makes that
+  // velocity actually zero (see the test above and support/gestures.js); the throw below
+  // deliberately omits it, and the contrast between the two is the whole test.
   await drag(page, { from: centre, to: { x: centre.x - 40, y: centre.y }, steps: 8, settleMs: 60 });
   await expect(page.locator('.caption__title')).toHaveText('Alpha');
   await expect(centreCard(page)).toHaveAttribute('data-index', '0');
