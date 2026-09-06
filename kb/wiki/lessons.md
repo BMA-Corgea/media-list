@@ -9,6 +9,138 @@ type: reference
 Durable lessons land here as the project runs — one entry per lesson, newest first, each
 citing the ticket/incident it came from.
 
+## An assertion that cannot fail and a scenario that cannot discriminate are two different bugs — and the second one hides behind the first (T-14 round 2)
+
+`tests/browser/queue.spec.js`'s filtered-reorder test guarded `kb/notes/handoff.md` §6's
+id-not-index rule. Reintroducing exactly the regression it names — `views/queue.js`'s
+`neighboursFor` computing neighbours from the unfiltered `all` array instead of `visible()` —
+left it **passing 4/4 on both engines**. It had two independent defects, and only one of them
+is visible from reading the assertions.
+
+**Defect 1, the one you can see: an assertion that cannot fail.** The test's headline claim
+was that hidden rows keep their positions *"byte-for-byte"*:
+
+```js
+expect(byId[movieM].queue_position).toBe(20);
+expect(byId[movieN].queue_position).toBe(40);
+```
+
+`backend/main.py::move_title` only ever runs `UPDATE titles SET queue_position = ? WHERE id
+= ?` for the single moved title. **No other row's position can change, whatever `after_id` /
+`before_id` the client sends.** The assertion is true under every possible frontend bug, so
+it constrains nothing. (It is also fragile in the other direction: `move_title` calls
+`_renumber` when a gap is too small to divide, which rewrites everyone's number legitimately.
+Assert the *order*, which is what is actually promised; never the literal integers, which are
+an implementation detail that is simultaneously unfalsifiable and brittle.)
+
+**Defect 2, the one that survives a careful reading of Defect 1: a scenario that cannot
+discriminate.** Delete the tautologies and the test still passes with the regression in
+place, because the *gesture* was blind. It dragged the **last** visible row above the
+**first**. Anime A is the first anime row in the filtered list and also the first anime row
+in the unfiltered queue, so `visible()` and `all` compute the **same** `{before_id: animeA}`.
+The two implementations are indistinguishable at that input. Every assertion downstream —
+however sharp — is being fed a case where correct and broken agree.
+
+An **interior** drop target is where the lists disagree. With Anime A dropped between Anime B
+and Anime C, the row above index 1 is Anime B (visible) or Movie M (unfiltered, *hidden*) —
+and the rewritten test fails on both engines with the regression restored:
+
+```
+Error: move sent {"after_id":2}; Anime B is 3, and the hidden rows are Movie M 2 / Movie N 4
+
+expect(received).toEqual(expected) // deep equality
+
+- Expected  - 1
++ Received  + 1
+
+  Array [
+-   3,
++   2,
+  ]
+```
+
+`after_id: 2` is Movie M — a row the anime filter was hiding. That is the regression, named.
+
+The lesson generalises past this test. **Before writing assertions, ask what inputs the
+correct and the broken implementation would disagree on, and check that your fixture is one
+of them.** Boundary cases — first, last, empty, single-element — are exactly where a filtered
+view and an unfiltered view coincide, where an index and an id coincide, where a sorted and
+an unsorted list coincide. They read like the natural thing to test and they are the worst
+discriminators available. Assertion quality cannot rescue a scenario that has no signal in it.
+
+What the rewritten test asserts instead, all three of which go red under the regression:
+
+1. **the ids the client actually sent**, read off the wire via
+   `response.request().postDataJSON()` — the id-not-index rule stated directly, in the one
+   place it is decided;
+2. **the full queue order after a reload**, hidden rows included — which is the hidden-row
+   guarantee written so that it *can* fail (verified: it fails on both engines on its own,
+   with the payload assertion disabled);
+3. the **filtered** order after that same reload.
+
+Note (2)'s reload. The first version checked the live DOM, and `views/queue.js` reorders
+optimistically during the gesture — so between the move response landing and the repaint, the
+DOM still shows the drop the user made even when the server was told something else entirely.
+An `expect.poll` succeeds on its first match, so it can pass inside that window against a
+broken client. Read the result from a fresh load, not from the optimistic view.
+
+**This is the fourth green test on this branch that proved a path the real system never
+takes.** The pattern is now the branch's defining defect, not a coincidence:
+
+| # | Ticket | The test said | What it actually exercised |
+| --- | --- | --- | --- |
+| 1 | T-13 F1 | traversal is contained | httpx applied RFC 3986 dot-segment removal *before the request left the client*, so the handler saw a payload the real server never produces — it passed against `spa()` with containment deleted |
+| 2 | T-13 F1 (point 4) | `/etc/passwd` is unreachable | a hardcoded `../` depth climbed out of an eight-deep worktree to a path that does not exist — it passed on a **miss** |
+| 3 | T-15 F1 | walking away stops the searches | the test called `aclose()` explicitly, the one thing the real disconnect path never does; the real path leaves the generator suspended and ~390 searches running |
+| 4 | T-14 F1 (this) | a filtered reorder never touches a hidden row | a boundary gesture where the filtered and unfiltered arrays yield the same id, plus an assertion the backend makes true unconditionally |
+
+All four were green. **None was found by reading the test.** Every one was found the same
+way: put the regression back in a scratch copy of the app and run the committed test against
+it. That is the only step that distinguishes a guard from a decoration, and it is cheap — a
+`rsync` of the tree, one edited line, a rebuild, one `playwright test` invocation. Budget it
+for every test that claims to guard a named rule.
+
+## A parameter no function destructures is a comment, not a mechanism — and the comment was wrong (T-14 round 2)
+
+`tests/browser/wall.spec.js` passed `settleMs: 60` at two call sites and explained that it
+*"forces the app's own velocity term to exactly zero … deliberately free of momentum."*
+`drag()` in `tests/browser/support/gestures.js` destructured `{ from, to, steps,
+pauseBeforeUp }`. **`settleMs` was silently dropped and had never done anything.** A grep
+found the two call sites and the explanation, and never a definition — extra properties on a
+destructured options object vanish without a warning from any tool in this stack.
+
+The interesting part is what the phantom concealed. Instrumenting `carousel.js::endDrag` to
+report its real internal velocity at `pointerup`, five trials per engine:
+
+| gesture | without the settle move | with it |
+| --- | --- | --- |
+| 90px / 12 steps | 0.0428–0.0446 (chromium), 0.0303–0.0606 (firefox) | **0.0000** |
+| 40px / 8 steps | 0.0221–0.0298 (chromium), 0.0216–0.0238 (firefox) | **0.0000** |
+
+`MIN_VELOCITY` is `0.02`. The momentum branch was firing in **10 of 10** trials, in the two
+tests whose comments said it could not — the 90px drag was being carried from position 0.536
+to ~0.96 by momentum it was documented to be free of. Both tests passed on **headroom the
+regression was allowed to eat**: with a real 15%-short drag-tracking bug injected into
+`carousel.js`, the drag test stayed **green on both engines** with the phantom parameter and
+went **red on both** once `settleMs` was implemented. Same broken app, same test body,
+opposite verdicts.
+
+Two things worth keeping:
+
+- **The mechanism has to be checked, not assumed.** A same-position `pointermove` zeroes
+  velocity because the app computes it as `-((event.clientX - lastX) / CARD_STEP) * (16 / dt)`
+  — the first factor is exactly 0. But that line is guarded by `if (dt > 0)`, so a settle
+  event delivered inside the same millisecond as the last real move would be skipped and the
+  stale velocity would survive. The wait is load-bearing. Measurement confirmed the app sees
+  the extra event on both engines (`pointermove` count 12→13 and 8→9, final `dx` 0, `dt`
+  66–103ms) — neither engine coalesces a zero-delta move away.
+- **A test that passes with margin it did not intend to have is not passing for its stated
+  reason,** and the comment explaining why it is reliable is then actively misleading — it
+  tells the next reader to trust a mechanism that does not exist. When a test's comment names
+  a mechanism, either implement the mechanism or rewrite the comment to describe the
+  incidental thing the test truly relies on. Leaving the two disagreeing is the worst of the
+  three states.
+
 ## A cached WebKit binary is not a working WebKit — two of its runtime libraries aren't in this machine's own Ubuntu repos (T-14)
 
 `~/.cache/ms-playwright/webkit-2336` (the build pinned by `@playwright/test@1.62.1`, chosen
