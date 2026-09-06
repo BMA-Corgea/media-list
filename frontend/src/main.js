@@ -13,6 +13,7 @@ import { transferView } from './views/transfer.js';
 import { homeView } from './views/home.js';
 import { titleView } from './views/title.js';
 import { addView } from './views/add.js';
+import { candidateView } from './views/candidate.js';
 
 const NAV = [
   { path: '', label: 'Up next' },
@@ -51,6 +52,12 @@ route('seen', seenView);
 route('add', addView);
 route('transfer', transferView);
 route(/^title\/(\d+)$/, titleView);
+// A candidate has no database id yet (T-17 locate F4), so it cannot reuse the route above.
+// `source_id` is opaque (TMDB and IGDB ids are both numeric strings today, but nothing
+// requires that), so it is matched permissively; `media_type` is the one TMDB actually
+// needs and every candidate carries one regardless of source (tmdb.search: 'movie'/'tv',
+// igdb.search: always 'game').
+route(/^add\/([^/]+)\/([^/]+)\/([^/]+)$/, candidateView);
 
 const app = document.querySelector('#app');
 const { bar, nav } = shell();

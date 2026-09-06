@@ -9,6 +9,92 @@ type: reference
 Durable lessons land here as the project runs — one entry per lesson, newest first, each
 citing the ticket/incident it came from.
 
+## A mocked call answers before an unmocked one fails — so the test passed against a page mid-navigation to a broken screen (T-17 round 2)
+
+`tests/browser/add.spec.js`'s AC3 test is the one written to prove that the `+` under a search
+result adds directly. Put back the nested-button trap the entry below already records as
+rejected — `open.append(add)` instead of `card.append(open, add)` — and **it still passed**, on
+both engines. Only AC7's keyboard test failed, and only by accident.
+
+The mechanism, traced rather than guessed. With the nesting, a click on `+` bubbles to
+`.card__open` as well, so one press fires **two** things: an add, and a navigation to the
+description screen. The test mocked `POST /api/titles` but not `GET /api/details/*`. So:
+
+1. the mocked POST answers in about a millisecond, and `quickAdd` writes "Added" into the hint
+   and puts `is-added` on the card;
+2. the navigation is meanwhile still waiting on a real `/api/details` request, which this
+   suite's server — deliberately given fake TMDB/IGDB credentials — can only fail, slowly;
+3. `router.js` awaits the view before it swaps the outlet, so **the old screen is still
+   mounted, and still correct**;
+4. every assertion runs inside that window, and passes.
+
+The test was reading a true fact about a page that was already on its way to a broken screen.
+Nothing about its assertions was weak — they were simply pointed at the half of the outcome the
+bug does not touch. AC7's test caught it only because *it* mocks `/api/details`, so the bad
+navigation resolved fast enough to wipe the hint before the assertion ran. Luck, not design.
+
+**The rule worth keeping: when a bug's signature is an EXTRA side effect, assert that side
+effect's absence directly — never infer it from whatever DOM state you happen to observe
+first.** The DOM you read is in a race with the side effect you did not name. Here that means
+two assertions, and the fixed test makes both:
+
+- `await expect(page).toHaveURL(/#\/add$/)` — the navigation that must not happen, named;
+- `mockDetails` now returns the keys it was asked for, and the test asserts `[]` — the fetch
+  that must not happen, named.
+
+A corollary for any suite that stubs the network: **an unmocked endpoint is not neutral.** It is
+a slow failure, and a slow failure holds the old screen in place long enough to make a broken
+app look right. Mock the calls a correct run will never make, precisely so a wrong run cannot
+hide inside their latency.
+
+**This is the seventh instance of the pattern this file has been counting since T-13** — a
+green test guarding a rule it cannot actually see. The table in *"An assertion that cannot fail
+and a scenario that cannot discriminate"* below names the first four; the count stood at six by
+the time T-17 was reviewed. The **eighth** arrived in the same review, and belongs here because
+its fix is the same shape: AC6's test proved that four cosmetic fields render and never looked
+at the body, so `record.kind !== 'game'` in front of the summary — the exact per-kind branch AC6
+forbids, and the clause T-16's books depend on — sailed straight past it. Stop reading a chosen
+list of fields; compare **the whole rendered markup**, one candidate driven through the screen
+as every kind, with only the kind's own name blanked out. Both fixes were verified by watching
+them go red on both engines against the regression put back in a scratch copy under `/tmp`, the
+bundle rebuilt each time — still the only step that tells a guard from a decoration.
+
+## A `<button>` cannot host a second door onto a different action — split the card, don't nest it (T-17)
+
+`views/add.js`'s search-result card used to be exactly one `<button>` whose only behaviour was
+add (the ticket's own incident: one press on "Dungeon Crawler Carl" committed the wrong TMDB
+match with no preview). AC3 gave the card a second, independent action — a `+` that adds
+directly, alongside an "open the description screen" action that must add nothing at all — and
+the shape that looks obvious is nesting: `<button class="card">…<button class="card__add">+
+</button></button>`.
+
+That shape does not work, for a reason that has nothing to do with this app's own logic.
+`<button>` inside `<button>` is invalid content model — browsers still render it, which is
+exactly what makes the trap easy to miss in a quick check — and a `click` on the inner button
+still BUBBLES to the outer one. Built that way, pressing `+` would fire the inner listener
+(add) AND the outer one (open), so every "quick add" would also silently navigate to the
+description screen right after adding. There is no `event.stopPropagation()` fix that isn't
+fragile: it has to be remembered on every future button the card grows, forever, by everyone
+who touches it — exactly the kind of rule a codebase forgets one refactor later.
+
+The real fix was structural, not defensive: `.card--pick` stopped being a button and became a
+plain wrapper `<div>`; the poster/title/meta press became its own `<button class="card__open">`
+(a SIBLING, not a parent); `<button class="card__add">` sits next to it, not inside it. Two
+doors, two independent buttons, one non-interactive frame around both — no event plumbing
+required to keep them from firing each other. Any card that is about to grow a second action
+should reach for this shape before reaching for `stopPropagation()`.
+
+A second, smaller trap the same change tripped: `tests/test_bundle.py` fingerprints each view
+module by one UI string assumed unique to it across `frontend/src/**/*.js`
+(`test_each_marker_string_is_unique_to_its_module`). This ticket deliberately put the literal
+string `"no art"` in `add.js`, `candidate.js` AND `title.js` — the whole point of AC5 is that a
+missing-artwork placeholder reads the same everywhere — which silently broke `add.js`'s needle,
+because `"no art"` had been its needle before it needed to be shared text. The uniqueness test
+caught it immediately and said exactly what was wrong; the trap is not noticing that
+deliberately-shared UI copy can no longer serve as any one module's fingerprint. Its needle
+has to come from that module's own unique surroundings instead (here, an aria-label sentence
+`add.js` alone constructs) — never from the phrase that is now shared on purpose.
+
 ## An assertion that cannot fail and a scenario that cannot discriminate are two different bugs — and the second one hides behind the first (T-14 round 2)
 
 `tests/browser/queue.spec.js`'s filtered-reorder test guarded `kb/notes/handoff.md` §6's

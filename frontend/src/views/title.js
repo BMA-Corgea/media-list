@@ -89,7 +89,11 @@ export async function titleView(id) {
 
   const poster = document.createElement('div');
   poster.className = 'poster hero__poster';
+  // T-17 AC5: this is the exact gap the incident report named — a stored row with no
+  // poster (TMDB tv/332437 has neither a poster nor a backdrop) used to render a blank box
+  // here, which reads as broken rather than as "this source has no image".
   if (record.poster_path) poster.style.backgroundImage = `url("${record.poster_path}")`;
+  else poster.append(Object.assign(document.createElement('span'), { className: 'poster__none', textContent: 'no art' }));
 
   const head = document.createElement('div');
   head.className = 'hero__head';

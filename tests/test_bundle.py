@@ -30,7 +30,12 @@ import pytest
 STRINGS_BY_MODULE = {
     "views/home.js": "Nothing on the list yet",
     "views/queue.js": "drag to reorder",
-    "views/add.js": "no art",
+    # T-17: "no art" moved from being add.js's own needle to shared UI text — it is now
+    # honoured by add.js, candidate.js AND title.js (AC5), so it no longer identifies any
+    # one of them on its own. Each needle below is unique to its module (see the uniqueness
+    # test below this dict).
+    "views/add.js": "add it straight away",
+    "views/candidate.js": "Back — add nothing",
     "views/seen.js": "Nothing here yet",
     "views/title.js": "How was it? (required)",
     "views/wheel.js": "btn--spin",

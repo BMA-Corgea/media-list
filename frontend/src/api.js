@@ -84,6 +84,13 @@ async function ndjson(path, payload, onEvent, signal) {
 export const api = {
   health: () => request('/api/health'),
   search: (q, signal) => request(`/api/search?q=${encodeURIComponent(q)}`, { signal }),
+  // The full record for one candidate — cover, summary, everything the description screen
+  // needs (T-17 AC1). `media_type` is required for a TMDB id (movie/tv are separate
+  // namespaces, see sources/tmdb.details) and harmless to pass for anything else.
+  details: (source, sourceId, mediaType, signal) => request(
+    `/api/details/${encodeURIComponent(source)}/${encodeURIComponent(sourceId)}${mediaType ? `?media_type=${encodeURIComponent(mediaType)}` : ''}`,
+    { signal },
+  ),
   title: (id) => request(`/api/titles/${id}`),
   patch: (id, changes) => request(`/api/titles/${id}`, { method: 'PATCH', body: JSON.stringify(changes) }),
   titles: (status) => request(`/api/titles${status ? `?status=${status}` : ''}`),

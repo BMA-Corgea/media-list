@@ -1,20 +1,34 @@
 /**
- * Add a title — search and pick.
+ * Add a title — search, then look before you commit.
  *
- * The one rule this view exists to honour: THE USER NEVER TYPES METADATA. There is exactly
- * one text input for content here, and it is `why`. Everything else arrives from the source
- * when a poster is clicked.
+ * T-17: a card used to BE the add — one press on a poster committed the candidate straight
+ * to the list, no preview, no way to notice a wrong match before it landed (see
+ * .autodev/specs/T-17.md's incident). Now a card is a preview onto the description screen
+ * (`views/candidate.js`) that adds NOTHING, and a separate `+` button underneath it is the
+ * only thing on this page that adds directly — for when the owner already knows what he
+ * wants. Both doors call the same `addCandidate` (AC3); neither implements adding itself.
  */
 
 import { api } from '../api.js';
 import { navigate } from '../router.js';
+import { addCandidate } from '../add-candidate.js';
 
 const DEBOUNCE_MS = 250;
+// px of pointer movement before a press on the `+` button is a drag, not a tap (T-5's
+// discipline) — a scroll or reorder gesture that happens to start on the button must never
+// fire an add.
+const DRAG_THRESHOLD = 6;
 
-function candidateCard(candidate, onPick) {
-  const card = document.createElement('button');
+function candidateCard(candidate, onOpen, onQuickAdd) {
+  const card = document.createElement('div');
   card.className = 'card card--pick';
-  card.type = 'button';
+
+  // The open door: everything but the `+` button lives inside this real <button>, so the
+  // whole preview area is one keyboard-reachable control (AC7) that never adds anything.
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'card__open';
+  open.setAttribute('aria-label', `${candidate.title} — see details before adding`);
 
   const poster = document.createElement('div');
   poster.className = 'poster';
@@ -29,8 +43,62 @@ function candidateCard(candidate, onPick) {
     document.createTextNode(` ${candidate.year || ''}`),
   );
 
-  card.append(poster, title, meta);
-  card.addEventListener('click', () => onPick(candidate, card));
+  open.append(poster, title, meta);
+  open.addEventListener('click', () => onOpen(candidate));
+
+  // The quick door: a real <button>, never a click handler on a div (AC7).
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'card__add';
+  add.textContent = '+ Add';
+  add.setAttribute('aria-label', `Add ${candidate.title} directly, without opening its description`);
+
+  let startX = 0;
+  let startY = 0;
+  // How far the pointer has travelled during the gesture currently in progress. It belongs
+  // to ONE gesture and must not outlive it — see the click handler below.
+  let moved = 0;
+  add.addEventListener('pointerdown', (event) => {
+    startX = event.clientX;
+    startY = event.clientY;
+    moved = 0;
+    // Captured so movement is measured accurately even once the pointer leaves the
+    // button's own box — the same reason `carousel.js` captures on its stage.
+    try { add.setPointerCapture(event.pointerId); } catch { /* not every pointer type supports capture */ }
+  });
+  add.addEventListener('pointermove', (event) => {
+    if (!add.hasPointerCapture?.(event.pointerId)) return;
+    moved = Math.max(moved, Math.hypot(event.clientX - startX, event.clientY - startY));
+  });
+  const releaseCapture = (event) => {
+    try { add.releasePointerCapture(event.pointerId); } catch { /* already released */ }
+  };
+  add.addEventListener('pointerup', releaseCapture);
+  add.addEventListener('pointercancel', (event) => {
+    releaseCapture(event);
+    // A cancelled gesture (the browser took the pointer over for a scroll) synthesises no
+    // click at all, so nothing downstream would ever clear `moved`. The gesture is over
+    // here, so its distance ends here too.
+    moved = 0;
+  });
+  add.addEventListener('click', (event) => {
+    // A keyboard activation is a click with no pointer behind it (`detail === 0`); it
+    // cannot be a drag, so it must never be judged by one (AC7).
+    const fromPointer = event.detail > 0;
+    const wasDrag = fromPointer && moved > DRAG_THRESHOLD;
+    // Whichever way that went, the gesture that produced this click has ENDED and its
+    // distance dies with it. `moved` used to be reset only in `pointerdown` (round 2, F1)
+    // — so an aborted drag left the button deaf: the next Enter on it, which fires no
+    // `pointerdown` at all, was swallowed by a gesture that had already finished, with no
+    // POST, no error and nothing on screen to say so.
+    moved = 0;
+    // Past the threshold this was a gesture, not a press: swallow the click the browser
+    // is about to synthesise, exactly as `carousel.js`'s `endDrag` does for a card open.
+    if (wasDrag) { event.preventDefault(); return; }
+    onQuickAdd(candidate, add, card);
+  });
+
+  card.append(open, add);
   return card;
 }
 
@@ -42,15 +110,13 @@ export async function addView() {
     <div class="addbar">
       <input class="field" id="q" type="search" autocomplete="off" spellcheck="false"
              placeholder="Search a film, series, anime or game…" aria-label="Search for a title" />
-      <input class="field field--why" id="why" type="text" maxlength="140"
-             placeholder="why? (optional — who recommended it, what hooked you)" aria-label="Why you want to watch it" />
     </div>
-    <p class="hint" id="hint">Type a few words. Click a poster to add it — nothing else to fill in.</p>
+    <p class="hint" id="hint">Type a few words. Click a card to see it before you add it, or
+      press its <strong>+</strong> to add it straight away.</p>
     <div class="grid" id="results"></div>
   `;
 
   const input = page.querySelector('#q');
-  const why = page.querySelector('#why');
   const hint = page.querySelector('#hint');
   const results = page.querySelector('#results');
 
@@ -62,25 +128,24 @@ export async function addView() {
     hint.className = `hint ${tone}`;
   };
 
-  async function pick(candidate, card) {
-    card.disabled = true;
+  function openCandidate(candidate) {
+    // AC1: this is the WHOLE effect of pressing a card. Nothing is added, nothing is sent
+    // — just a navigation, to a route the candidate's source/id/media_type describe.
+    navigate(`/add/${encodeURIComponent(candidate.source)}/${encodeURIComponent(candidate.source_id)}/${encodeURIComponent(candidate.media_type || '')}`);
+  }
+
+  async function quickAdd(candidate, button, card) {
+    button.disabled = true;
     card.classList.add('is-adding');
     try {
-      const stored = await api.add({
-        source: candidate.source,
-        source_id: candidate.source_id,
-        // Carried through deliberately: TMDB movie and tv ids are separate namespaces, and a
-        // stored title that forgets which one it came from cannot be refreshed later.
-        media_type: candidate.media_type,
-        why: why.value,
-      });
+      const stored = await addCandidate(candidate);
       say(`Added ${stored.title}. It is at the end of your queue.`, 'ok');
+      card.classList.remove('is-adding');
       card.classList.add('is-added');
-      why.value = '';
     } catch (error) {
       say(error.status === 409 ? error.message : `Could not add that — ${error.message}`, 'bad');
-      card.disabled = false;
       card.classList.remove('is-adding');
+      button.disabled = false;
     }
   }
 
@@ -94,13 +159,13 @@ export async function addView() {
     try {
       const data = await api.search(query, controller.signal);
       if (controller.signal.aborted) return;
-      results.replaceChildren(...data.results.map((c) => candidateCard(c, pick)));
+      results.replaceChildren(...data.results.map((c) => candidateCard(c, openCandidate, quickAdd)));
 
       const broken = Object.entries(data.sources || {}).filter(([, s]) => !s.ok);
       if (!data.results.length) say(`Nothing found for “${query}”.`);
       else if (broken.length) say(`${data.results.length} results — but ${broken.map(([n, s]) => `${n} failed (${s.error})`).join(', ')}`, 'bad');
       else if (data.disabled?.length) say(`${data.results.length} results. ${data.disabled.join(', ')} is not configured, so those are missing.`);
-      else say(`${data.results.length} results. Click one.`);
+      else say(`${data.results.length} results. Click one to look, or press + to add it now.`);
     } catch (error) {
       if (error.name === 'AbortError') return;
       say(`Search failed — ${error.message}`, 'bad');
@@ -112,7 +177,7 @@ export async function addView() {
     const query = input.value.trim();
     if (query.length < 2) {
       results.replaceChildren();
-      say('Type a few words. Click a poster to add it — nothing else to fill in.');
+      say('Type a few words. Click a card to see it before you add it, or press its + to add it straight away.');
       return;
     }
     say('Searching…');
