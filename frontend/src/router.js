@@ -13,6 +13,10 @@ const routes = [];
 let outlet = null;
 let chrome = null;
 let mounted = null;
+// Whether `mounted` has still to be dismissed. Since T-18 a view is dismissed when the user
+// LEAVES it rather than when its replacement is ready, so "on screen" and "still live"
+// stopped being the same question and `mounted` alone can no longer answer both.
+let mountedIsLive = false;
 
 /** `pattern` is a string ('add') or a RegExp whose capture groups become the view's args. */
 export function route(pattern, view) {
@@ -40,7 +44,7 @@ function match(path) {
 }
 
 /**
- * Tell a view its screen is gone.
+ * Tell a view the user has left it.
  *
  * `replaceChildren` drops the ELEMENT; it does not stop anything the view started. A view
  * that owns work outliving its DOM — a request still streaming, a timer, a listener on
@@ -48,7 +52,12 @@ function match(path) {
  * that calls it. Without it, navigating away from a running import preview left the request
  * open and the server resolving a thousand rows for a screen nobody could see (T-15 F2).
  *
- * Called exactly once per node, and never for a node still on screen.
+ * Called exactly once per node — `mountedIsLive` is what keeps that true now that the call
+ * no longer coincides with the swap (T-18 round 2, F1; see `render`).
+ *
+ * NOT the same thing as "the node is off screen". A dismissed node stays displayed until
+ * the incoming view resolves and `replaceChildren` runs, so a view's `cleanup` must be the
+ * one that gives up work, not the one that tears its own DOM apart.
  */
 function dismiss(node) {
   if (!node || typeof node.cleanup !== 'function') return;
@@ -68,6 +77,36 @@ async function render() {
   // Views may be async (most fetch). Guard against a slow view painting over a newer one
   // the user has already navigated to.
   const token = path;
+
+  // ── The outgoing view is dismissed HERE, before the incoming one is built ────────────
+  //
+  // It used to be the other way round: `await found.view(...)` first, `dismiss(mounted)`
+  // after. That made a view's lifecycle depend on how the NEXT view happens to be written.
+  // Every view in this app awaits a network call on the way up except `views/add.js`,
+  // which is synchronous — so navigating Add → a slow screen → Add built the second Add
+  // mount while the first was still queued behind the slow screen's `await`, and T-18's
+  // search hand-off (a module-scoped value written at unmount, read at mount) was read
+  // before it was ever written. The query the owner was promised would be kept came back
+  // empty, silently, which is the exact symptom T-18 exists to remove (round 2, F1).
+  //
+  // Versioning the hand-off instead would have stopped a stale mount CLOBBERING a fresh
+  // one, but the fresh one would still have been built from nothing — the ordering is the
+  // bug, not the write. Doing it here, synchronously, before the first `await`, means
+  // dismissals happen in `hashchange` order and can never overtake a later mount.
+  //
+  // What that costs, plainly: `dismiss` does not remove the node (`replaceChildren` below
+  // does, later), so between here and the swap the outgoing screen is visible but inert.
+  // That is the browser's own behaviour — the old page stays up until the new one paints —
+  // and it is the honest reading of `cleanup`: the user leaves at the navigation, not
+  // whenever the next screen finishes loading. T-15's import stream is cancelled at the
+  // click now rather than seconds later, which is what "walking away stops the searches"
+  // always meant. The one thing given up is a keystroke typed into a screen already
+  // navigated away from, during that window; nothing is owed to it.
+  if (mountedIsLive) {
+    mountedIsLive = false;
+    dismiss(mounted);
+  }
+
   const node = await found.view(...found.args);
   if (current() !== token) {
     // This node is never displayed, so nothing later will ever dismiss it. If it started
@@ -75,8 +114,8 @@ async function render() {
     dismiss(node);
     return;
   }
-  dismiss(mounted);
   mounted = node;
+  mountedIsLive = true;
   outlet.replaceChildren(node);
   if (chrome) chrome(path);
   window.scrollTo({ top: 0 });

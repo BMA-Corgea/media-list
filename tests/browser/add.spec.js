@@ -504,6 +504,15 @@ test('T-18 AC3 — leaving mid-debounce for a NEW query never restores the OLD q
   await page.fill('#q', 'Carl');
   await page.locator('.card__open').click();
   await expect(page).toHaveURL(/#\/add\/tmdb\/332437\/tv$/);
+  // WAIT FOR THE SCREEN, NOT THE URL (T-18 round 2). `toHaveURL` is satisfied by the hash
+  // alone, and `router.js` renders from `current()` — the live hash — rather than from the
+  // event, so a `goBack()` issued before the click's `hashchange` task has run leaves BOTH
+  // queued events reading `#/add`: the candidate screen is never mounted at all and Add is
+  // mounted twice instead. Measured, not guessed — an in-page MutationObserver logged
+  // `HASHCHANGE -> #/add (event newURL #/add/tmdb/332437/tv)` followed by two `MOUNT page`
+  // records and no candidate screen. This assertion is what makes the test perform the
+  // round trip its own name describes.
+  await expect(page.locator('.hero .title__name')).toHaveText('Dungeon Crawler Carl');
 
   await page.goBack();
   await expect(page).toHaveURL(/#\/add$/);
@@ -523,3 +532,85 @@ test('T-18 AC4 — a fresh #/add (no prior search this session) still shows an e
   await expect(page.locator('#q')).toHaveValue('');
   await expect(page.locator('.card__open')).toHaveCount(0);
 });
+
+/**
+ * T-18 round 2 — what the first round's three tests could not see.
+ *
+ * All three navigated Add → candidate → Add, and `views/candidate.js` resolves its mocked
+ * `/api/details` in about a millisecond. Nothing in the suite ever put a genuinely slow
+ * screen in the middle, which is the only shape the router bug below has.
+ */
+
+/** The real navigation the owner uses — a tab in the top bar, not a hash written by hand.
+ * Addressed by `data-path` rather than by accessible name because "Add" is also the start
+ * of the card's own `+` button label and of the description screen's "Add to the list". */
+const navChip = (page, path) => page.locator(`.topbar .chip[data-path="${path}"]`);
+
+/**
+ * Stamp the screen that is on display right now, so a later assertion can prove it is
+ * reading a DIFFERENT, freshly-built one. Both halves of F1 leave "Dune" in the box on the
+ * OLD node too, and `router.js` does not remove that node until the incoming view resolves
+ * — so "the query is still there" means nothing until the node it was read from is known
+ * to be the new mount (kb/wiki/lessons.md: the DOM you read is in a race with the thing
+ * you did not name).
+ */
+async function stampMountedScreen(page) {
+  await page.locator('main.page').evaluate((node) => { node.dataset.probe = 'first-mount'; });
+}
+
+async function expectRemounted(page) {
+  await expect(page.locator('main.page')).not.toHaveAttribute('data-probe', 'first-mount');
+}
+
+test('T-18 F1 — bouncing off a genuinely SLOW screen and back still restores the search', async ({ page, seed }) => {
+  seed([{ title: 'Existing One', kind: 'movie' }]);
+  const searchHits = await mockSearch(page, [DUNE]);
+
+  // The intermediate screen is `views/queue.js` — a real view, really awaiting its real
+  // request, with that request held open at the network layer for 1.5s. Nothing here
+  // simulates slowness inside the app: the delay is on the wire, exactly where a slow
+  // server's would be, and the queue view is genuinely still sitting on its `await`.
+  let queueAsked = 0;
+  let queueAnswered = 0;
+  await page.route(
+    (url) => url.pathname === '/api/titles' && url.searchParams.get('status') === 'queued',
+    async (route) => {
+      queueAsked += 1;
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      queueAnswered += 1;
+      // Let the real backend answer it — a mocked body would still be a real round trip,
+      // but there is no reason to fake one.
+      await route.continue().catch(() => { /* the run ended while this was parked */ });
+    },
+  );
+
+  await search(page, 'Dune');
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+  expect(searchHits).toEqual(['Dune']);
+  await stampMountedScreen(page);
+
+  // Leave for the queue, and come back BEFORE it has answered. This is the whole test:
+  // `addView()` is the only synchronous view in the app, so the second Add mount runs
+  // while the first one is still waiting to be dismissed behind the queue's `await`.
+  await navChip(page, 'queue').click();
+  await page.waitForTimeout(300);
+  expect(queueAsked, 'the intermediate view must really have gone to the network').toBe(1);
+  expect(queueAnswered, 'and must still be waiting on it when Add is remounted').toBe(0);
+  await navChip(page, 'add').click();
+
+  // A different node from the one stamped above — this is the second Add mount, and it is
+  // the one being read below.
+  await expectRemounted(page);
+  await expect(page.locator('#q')).toHaveValue('Dune');
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+
+  // Still true once the slow view finally answers into a screen nobody is on any more.
+  await page.waitForTimeout(1600);
+  expect(queueAnswered).toBe(1);
+  await expect(page).toHaveURL(/#\/add$/);
+  await expect(page.locator('#q')).toHaveValue('Dune');
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+  // AC5 holds across the bounce too: the restore cost no new round trip.
+  expect(searchHits).toEqual(['Dune']);
+});
+

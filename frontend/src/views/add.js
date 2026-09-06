@@ -23,14 +23,20 @@ const DRAG_THRESHOLD = 6;
  * T-18: the one thing that survives `addView()`'s own unmount — the query and the results it
  * produced, kept as ONE value so they can never be shown paired with each other's opposite
  * number (AC3). Module scope, not a property on the page or a closure that dies with it: a
- * router-level route swap (`router.js:80`'s `replaceChildren`) destroys the DOM `addView()`
+ * router-level route swap (`router.js`'s `replaceChildren`) destroys the DOM `addView()`
  * built, but the module itself stays loaded for the life of the app, so a `let` here is the
- * simplest thing that outlives one mount without any change to the router's own shape.
+ * simplest thing that outlives one mount.
  *
  * Written from exactly one place: `page.cleanup()` below, at the T-15 unmount seam
  * (`router.js`'s `dismiss`) — the one guaranteed moment the live `input.value` and the last
  * verified `(query, data)` pair are both still readable, and the last moment before either
  * is gone. Never written mid-render, and never read as `input.value` — see `cleanup` for why.
+ *
+ * A hand-off between two mounts of the same view is only as good as the ORDER of the two
+ * calls, and that order is the router's to keep, not this file's: `render()` dismisses the
+ * outgoing view before it builds the incoming one, so this write always lands before the
+ * next mount's read. It did not always — see the ordering note in `router.js` (T-18 round
+ * 2, F1) before changing either side.
  */
 let stash = null;
 
