@@ -66,7 +66,14 @@ The last two need a real browser to assert against and are T-14's job.
   `pointermove` and `pointerup`, velocity falls under `MIN_VELOCITY` and a flick genuinely is a
   slow drag. The test is honest; what it measures depends on the scheduler. Making it
   deterministic means not driving the real gesture path — the owner's call.
-- **Test data on the list.** Akira, Outer Wilds and Attack on Titan were added by import
-  tests; NieR: Automata and Hollow Knight carry test ratings. Real titles, the owner's to curate.
+- **The list is ENTIRELY test data — the owner has added nothing yet.** Corrected by him
+  2026-09-05: *"I didn't do anything yet. There's no 14 rows."* All 14 rows in
+  `data/media-list.db` are build fixtures from T-4/T-9/T-10, seeded the day they were created,
+  that happen to be real titles: The Thing · Perfect Blue · Hollow Knight (5★) · Cowboy Bebop ·
+  Breaking Bad · Andor · Arrival · The Truman Show · Super Mario 64 · NieR: Automata (4★, the one
+  `seen` row) · JUJUTSU KAISEN · Akira · Outer Wilds · Attack on Titan.
+  **Treat them as disposable**, and do not describe them as his watchlist. `rm -rf data && ./start.sh`
+  rebuilds an empty database in ~9s. His real list is still to come — he planned to generate one
+  with a chatbot using the README prompt.
 - `pipelines.wiring` doctor warn is the unused `feature-regulated` pipeline — same benign
   warn as repo-tour.
