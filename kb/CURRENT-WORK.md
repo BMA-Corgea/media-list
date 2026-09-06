@@ -59,6 +59,13 @@ The last two need a real browser to assert against and are T-14's job.
   `movie`/`anime`/`live-action` rows would be ~5× — at the cost of the "nothing of kind X
   matched" recovery path. **An open design decision for the owner**, with a test that stops it
   being taken silently (trade-off table in `kb/notes/handoff.md`).
+- **The momentum browser test is load-sensitive (open, proposed as its own ticket).**
+  `tests/browser/wall.spec.js:98` fails on a saturated machine — measured: load 19.98 on 20 cores
+  → red on both engines and a 1.7m suite; load ~10 → green in 32.7s. The mechanism is
+  `carousel.js:164`, `velocity = … * (16 / dt)`: when the host stretches the gap between the last
+  `pointermove` and `pointerup`, velocity falls under `MIN_VELOCITY` and a flick genuinely is a
+  slow drag. The test is honest; what it measures depends on the scheduler. Making it
+  deterministic means not driving the real gesture path — the owner's call.
 - **Test data on the list.** Akira, Outer Wilds and Attack on Titan were added by import
   tests; NieR: Automata and Hollow Knight carry test ratings. Real titles, the owner's to curate.
 - `pipelines.wiring` doctor warn is the unused `feature-regulated` pipeline — same benign
