@@ -614,3 +614,61 @@ test('T-18 F1 — bouncing off a genuinely SLOW screen and back still restores t
   expect(searchHits).toEqual(['Dune']);
 });
 
+
+/**
+ * F2, direction one. The restore is NOT limited to coming back from a candidate screen —
+ * `stash` survives any departure from Add. That is deliberate (the ticket exists so the
+ * owner does not retype, which is just as true returning from the Queue tab as from a
+ * candidate), and AC4's "not via back" wording is loose rather than a second rule. Pinned
+ * here so it cannot be quietly narrowed later.
+ */
+test('T-18 F2 — leaving Add for an unrelated screen and returning by the tab restores, with no back button and no candidate involved', async ({ page, seed }) => {
+  seed([{ title: 'Existing One', kind: 'movie' }]);
+  const searchHits = await mockSearch(page, [DUNE]);
+
+  await search(page, 'Dune');
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+  await stampMountedScreen(page);
+
+  // A forward navigation to a screen with nothing to do with adding — and it really
+  // rendered, so this is not a bounce that never left.
+  await navChip(page, 'queue').click();
+  await expect(page.locator('.qrow__title')).toHaveText('Existing One');
+
+  await navChip(page, 'add').click();
+  await expectRemounted(page);
+  await expect(page.locator('#q')).toHaveValue('Dune');
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+  expect(searchHits).toEqual(['Dune']);
+});
+
+/**
+ * F2, direction two. "Fresh" means *no prior search this session* — not "arrived by any
+ * particular route". Two ways of being fresh, both asserted, so the test above cannot be
+ * satisfied by a view that simply always restores something.
+ */
+test('T-18 F2/AC4/AC6 — "fresh" is no search THIS session: never-searched navigation stays empty, and a reload wipes the stash', async ({ page, seed }) => {
+  seed([{ title: 'Existing One', kind: 'movie' }]);
+  const searchHits = await mockSearch(page, [DUNE]);
+
+  // Fresh, sense one: this session has never searched. Having been on Add before is not
+  // what the restore keys on, so leaving and returning must invent nothing.
+  await navChip(page, 'queue').click();
+  await expect(page.locator('.qrow__title')).toHaveText('Existing One');
+  await navChip(page, 'add').click();
+  await expect(page.locator('#q')).toHaveValue('');
+  await expect(page.locator('.card__open')).toHaveCount(0);
+  expect(searchHits).toEqual([]);
+
+  // Now there IS something to restore …
+  await search(page, 'Dune');
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+
+  // … and fresh, sense two: a full reload re-evaluates the module, so the module-scoped
+  // stash goes with it. That is AC6's recorded answer — no storage backing, on purpose —
+  // and it is the outer edge of "this session".
+  await page.reload();
+  await expect(page.locator('#q')).toHaveValue('');
+  await expect(page.locator('.card__open')).toHaveCount(0);
+  expect(searchHits).toEqual(['Dune']);
+});
