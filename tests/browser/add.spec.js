@@ -43,6 +43,44 @@ const HOLLOW_KNIGHT = {
   backdrop_url: null, popularity: 80,
 };
 
+// AC6's real subject: ONE candidate, driven through the description screen as several
+// kinds. Everything but `kind` is held fixed (same source, so even the `Source` fact is the
+// same) and `source_id` varies only because the route and the details mock key off it.
+// `book` is deliberately a kind this app does not have yet — T-16 puts books on this exact
+// screen, and AC6 is the clause promising they land there without a branch in
+// `views/candidate.js`.
+const EVERY_KIND = ['live-action', 'movie', 'anime', 'game', 'book'];
+
+function oneCandidateAs(kind, index) {
+  return {
+    source: 'tmdb', source_id: String(7000 + index), media_type: 'thing',
+    title: 'One Candidate, Many Kinds', original_title: null, year: 2019, kind,
+    summary: 'The same summary, whatever this thing turns out to be.',
+    poster_url: 'https://image.tmdb.org/t/p/w500/same.jpg', backdrop_url: null, popularity: 1,
+  };
+}
+
+/**
+ * The whole rendered screen, with the kind's own NAME blanked out — i.e. everything
+ * `views/candidate.js` puts on the page except the vocabulary `frontend/src/kinds.js`
+ * owns. Two kinds whose shapes differ here differ structurally, which is exactly what AC6
+ * forbids; comparing the markup rather than a hand-picked list of fields is the point
+ * (round 2, F3 — the old test read four cosmetic fields and never looked at the body, so
+ * `if (record.summary && record.kind !== 'game')` sailed straight past it).
+ */
+function renderedShape(page) {
+  return page.evaluate(() => {
+    const strip = (selector) => {
+      const node = document.querySelector(selector);
+      if (!node) return `MISSING ${selector}`;
+      const clone = node.cloneNode(true);
+      for (const el of clone.querySelectorAll('.kind')) el.textContent = '<kind>';
+      return clone.outerHTML;
+    };
+    return { hero: strip('.hero'), body: strip('.title__body') };
+  });
+}
+
 function searchEnvelope(results) {
   const sources = {};
   for (const r of results) sources[r.source] = { ok: true, count: results.length };
@@ -269,6 +307,43 @@ test('AC6 — an IGDB game candidate renders on the same description screen with
   await expect(page.locator('.hero .title__name')).toHaveText('Hollow Knight');
   await expect(page.locator('.hero .kind')).toHaveText('game');
   await expect(page.locator('.fact dd')).toHaveText('IGDB');
+});
+
+test('AC6 — the same candidate as every kind renders the identical screen, vocabulary aside', async ({ page, seed }) => {
+  seed([]);
+  const byKey = {};
+  EVERY_KIND.forEach((kind, i) => {
+    const candidate = oneCandidateAs(kind, i);
+    byKey[`tmdb:${candidate.source_id}`] = detailsFor(candidate);
+  });
+  await mockDetails(page, byKey);
+
+  const shapes = [];
+  for (const [i, kind] of EVERY_KIND.entries()) {
+    const candidate = oneCandidateAs(kind, i);
+    await page.goto(`/#/add/tmdb/${candidate.source_id}/${candidate.media_type}`);
+
+    // Positive first: an empty screen would be "identical" for every kind too, so each
+    // kind has to actually render the whole thing before the comparison means anything.
+    await expect(page.locator('.hero .title__name')).toHaveText(candidate.title);
+    await expect(page.locator('.title__year')).toHaveText(String(candidate.year));
+    await expect(page.locator('.title__summary')).toHaveText(candidate.summary);
+    await expect(page.locator('.fact dd')).toHaveText('TMDB');
+    await expect(page.locator('#why')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Add to the list' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Back — add nothing' })).toBeVisible();
+
+    // The one thing allowed to differ between kinds: the kind's own name.
+    await expect(page.locator('.hero .kind')).toHaveText(kind);
+
+    shapes.push({ kind, ...(await renderedShape(page)) });
+  }
+
+  const [first, ...rest] = shapes;
+  for (const shape of rest) {
+    expect(shape.hero, `the hero differs between "${first.kind}" and "${shape.kind}"`).toBe(first.hero);
+    expect(shape.body, `the body differs between "${first.kind}" and "${shape.kind}"`).toBe(first.body);
+  }
 });
 
 test('AC7 — the card and the + button both work from the keyboard', async ({ page, seed }) => {
