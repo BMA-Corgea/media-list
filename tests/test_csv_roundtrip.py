@@ -13,17 +13,57 @@ import io
 
 from tests.factories import preview_result
 
-README_EXPORT_HEADER = (
-    "title,year,kind,why,status,stars,queue_position,tmdb_id,igdb_id,imdb_id,"
-    "added_at,watched_at,review"
-)
+def _readme_export_header(repo_root) -> str:
+    """The export header as README.md actually publishes it, read from the document.
+
+    This used to be a string copied into this file by hand. That makes a weaker tripwire
+    than it looks: it catches `csvio` drifting from the COPY, and is perfectly happy when
+    `csvio` and the copy are updated together and the README is left behind — which is the
+    drift that matters, because the README is the half the owner was told to rely on.
+    T-16 added a column to this contract and this is the test that has to make the two move
+    together, so it now reads the real document.
+    """
+    text = (repo_root / "README.md").read_text(encoding="utf-8")
+    headers = [line.strip() for line in text.splitlines()
+               if line.strip().startswith("title,year,kind,why,status,")]
+    assert len(headers) == 1, (
+        f"expected exactly one export header line in README.md, found {len(headers)}: {headers}"
+    )
+    return headers[0]
 
 
-def test_export_header_matches_the_readme_contract(client):
+def test_export_header_matches_the_readme_contract(client, repo_root):
     resp = client.get("/api/export.csv")
     assert resp.status_code == 200
     header_line = resp.text.split("\r\n", 1)[0]
-    assert header_line == README_EXPORT_HEADER
+    assert header_line == _readme_export_header(repo_root)
+
+
+def test_csvio_columns_are_exactly_what_the_readme_publishes(repo_root):
+    """The other half of the same contract: `csvio.COLUMNS` IS the README's header.
+
+    `csvio.py`'s docstring says the column list "must not drift from that document". This
+    is that sentence, enforced — in the direction the hand-copied constant could not check.
+    """
+    from backend import csvio
+
+    assert ",".join(csvio.COLUMNS) == _readme_export_header(repo_root)
+
+
+def test_the_readme_documents_every_column_it_publishes(repo_root):
+    """Every column in the header has a row in one of the README's own column tables.
+
+    A column added to the contract but never described is the failure this catches: the
+    header is what a chatbot is told to emit, the tables are what tell a human what to put
+    in it, and `isbn` arriving in one but not the other would make the document quietly
+    wrong rather than loudly wrong.
+    """
+    text = (repo_root / "README.md").read_text(encoding="utf-8")
+    for column in _readme_export_header(repo_root).split(","):
+        assert f"`{column}`" in text, (
+            f"README.md publishes the column {column!r} in the export header but never "
+            f"documents it — no `{column}` appears anywhere in the prose or the tables."
+        )
 
 
 def test_export_is_rfc4180_quoted_and_utf8(client, seed):
@@ -131,8 +171,15 @@ def test_readmes_own_starter_csv_parses_with_no_problems(client, monkeypatch):
             "summary": None, "poster_url": None, "backdrop_url": None, "popularity": 0,
         }]
 
+    async def no_books(query: str) -> list[dict]:
+        """Open Library answers, and answers with nothing. There are no books in the
+        starter CSV, and a source that is always on must still be STUBBED — it is the one
+        source with no credentials to be missing, so nothing else would stop it."""
+        return []
+
     monkeypatch.setattr(main_module.tmdb, "search", fake_search)
     monkeypatch.setattr(main_module.igdb, "search", fake_search)
+    monkeypatch.setattr(main_module.openlibrary, "search", no_books)
 
     starter_csv = (
         "title,year,kind,why\n"

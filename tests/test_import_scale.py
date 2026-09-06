@@ -93,7 +93,7 @@ def scale_sources(monkeypatch) -> dict:
     """
     import backend.main as main_module
 
-    calls = {"tmdb": 0, "igdb": 0, "queries": [], "in_flight": 0, "peak": 0}
+    calls = {"tmdb": 0, "igdb": 0, "openlibrary": 0, "queries": [], "in_flight": 0, "peak": 0}
 
     @asynccontextmanager
     async def counted(source: str, query: str):
@@ -119,8 +119,16 @@ def scale_sources(monkeypatch) -> dict:
         async with counted("igdb", query):
             return []
 
+    async def openlibrary_search(query: str) -> list[dict]:
+        # Counted and paid for like the other two. Open Library is always on, so from T-16
+        # every row of every import consults a THIRD source — a stub that returned instantly
+        # would quietly make these timing tests measure a cheaper import than the real one.
+        async with counted("openlibrary", query):
+            return []
+
     monkeypatch.setattr(main_module.tmdb, "search", tmdb_search)
     monkeypatch.setattr(main_module.igdb, "search", igdb_search)
+    monkeypatch.setattr(main_module.openlibrary, "search", openlibrary_search)
     return calls
 
 
@@ -471,6 +479,7 @@ def test_a_failure_part_way_through_becomes_a_terminal_error_event(client, monke
 
     monkeypatch.setattr(main_module.tmdb, "search", exploding_search)
     monkeypatch.setattr(main_module.igdb, "search", exploding_search)
+    monkeypatch.setattr(main_module.openlibrary, "search", exploding_search)
 
     final = _stream(client, generate_csv(5))[-1]
     assert final["event"] == "error", f"expected a terminal error event, got {final!r}"

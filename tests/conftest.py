@@ -107,7 +107,7 @@ from starlette.testclient import TestClient  # noqa: E402
 from backend.config import config  # noqa: E402
 from backend.db import connection  # noqa: E402
 from backend.main import app  # noqa: E402
-from backend.sources import anilist, base, igdb, tmdb  # noqa: E402
+from backend.sources import anilist, base, igdb, openlibrary, tmdb  # noqa: E402
 from backend import artwork  # noqa: E402
 
 # Fails the whole session at collection time, loudly, if the override above was somehow too
@@ -136,7 +136,11 @@ pytest_plugins = ["tests.factories"]
 # those four modules' own `client` names, which still point at the original function object.
 # The seam has to be patched in every module that imported the name, not just where it was
 # defined.
-_NETWORK_MODULES = (base, tmdb, igdb, anilist, artwork)
+# `openlibrary` is in here for a reason worth stating: it is the ONE source that needs no
+# credentials, so it is the one source whose real client would work on a machine with a
+# completely empty .env. Every other module here is protected twice over — by this patch and
+# by having no key to use. This one is protected only by this patch.
+_NETWORK_MODULES = (base, tmdb, igdb, anilist, openlibrary, artwork)
 
 
 @pytest.fixture(autouse=True)

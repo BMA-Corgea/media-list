@@ -143,6 +143,12 @@ class UpstreamTransport(httpx.AsyncBaseTransport):
                 "poster_path": None, "backdrop_path": None, "popularity": 1.0,
                 "genre_ids": [], "original_language": "en",
             }]})
+        if host == "openlibrary.org":
+            # `_search_all` consults every source per title and Open Library is always on,
+            # so every scale run now passes through here. Answering with no docs keeps these
+            # tests measuring what they were written to measure (pacing and concurrency of
+            # the paid-for sources) while still costing a real round trip.
+            return httpx.Response(200, json={"numFound": 0, "docs": []})
         if host == "api.igdb.com":
             if not self.games:
                 return httpx.Response(200, json=[])
@@ -181,7 +187,7 @@ def upstream(monkeypatch) -> Callable[..., UpstreamTransport]:
     the test, and only for the modules named.
     """
     from backend import artwork
-    from backend.sources import anilist, base, igdb, tmdb
+    from backend.sources import anilist, base, igdb, openlibrary, tmdb
 
     def install(latency: float = 0.05, games: bool = False) -> UpstreamTransport:
         transport = UpstreamTransport(latency=latency, games=games)
@@ -189,7 +195,7 @@ def upstream(monkeypatch) -> Callable[..., UpstreamTransport]:
         def stubbed_client(*_args, **_kwargs) -> httpx.AsyncClient:
             return httpx.AsyncClient(transport=transport)
 
-        for module in (base, tmdb, igdb, anilist, artwork):
+        for module in (base, tmdb, igdb, anilist, openlibrary, artwork):
             monkeypatch.setattr(module, "client", stubbed_client)
         return transport
 

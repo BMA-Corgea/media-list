@@ -16,12 +16,17 @@ import json
 import re
 
 #: The exact export header, in the README's order.
+#:
+#: `isbn` joined in T-16, on the owner's explicit instruction ("Add the isbn column"), and
+#: sits with the other identifiers rather than at the end because that is where it reads.
+#: ADDING a column does not break an older file: `parse` reads by header NAME, so an export
+#: taken before T-16 still imports — there is a test that holds that (`tests/fixtures/`).
 COLUMNS = [
     "title", "year", "kind", "why", "status", "stars", "queue_position",
-    "tmdb_id", "igdb_id", "imdb_id", "added_at", "watched_at", "review",
+    "tmdb_id", "igdb_id", "imdb_id", "isbn", "added_at", "watched_at", "review",
 ]
 
-KINDS = {"anime", "movie", "live-action", "game"}
+KINDS = {"anime", "movie", "live-action", "game", "book"}
 
 
 def export_rows(rows) -> str:
@@ -47,6 +52,10 @@ def export_rows(rows) -> str:
             "tmdb_id": row["source_id"] if row["source"] == "tmdb" else "",
             "igdb_id": row["source_id"] if row["source"] == "igdb" else "",
             "imdb_id": row["imdb_id"] or "",
+            # A book has no id column of its own, so this IS its id on the way back in:
+            # an ISBN names one edition, an edition belongs to one work, and the resolver
+            # spends it exactly the way it spends a tmdb_id. Blank for everything else.
+            "isbn": row["isbn"] or "",
             "added_at": row["added_at"] or "",
             "watched_at": row["watched_at"] or "",
             "review": row["review"] or "",
@@ -108,6 +117,7 @@ def parse(text: str) -> tuple[list[dict], list[str]]:
             "tmdb_id": record.get("tmdb_id") or None,
             "igdb_id": record.get("igdb_id") or None,
             "imdb_id": record.get("imdb_id") or None,
+            "isbn": record.get("isbn") or None,
             "added_at": record.get("added_at") or None,
             "watched_at": record.get("watched_at") or None,
             "review": record.get("review") or None,

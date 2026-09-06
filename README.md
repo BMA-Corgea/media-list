@@ -1,10 +1,10 @@
 # media-list
 
-An organizer for all the stuff I've been meaning to get to — anime, movies, live action and
-video games — built to be more fun than the spreadsheet it replaces.
+An organizer for all the stuff I've been meaning to get to — anime, movies, live action,
+video games and books — built to be more fun than the spreadsheet it replaces.
 
 A rotating carousel of cover art on the home page. A real page per title with a summary,
-hero art and an IMDb link. One queue you order yourself, a wheel you can spin when you
+hero art and an outbound link. One queue you order yourself, a wheel you can spin when you
 can't decide, and a five-star review that files a title into the Seen archive once you're
 done with it.
 
@@ -42,7 +42,7 @@ mandatory.
 | --- | --- | --- |
 | `title` | **yes** | What you'd type into a search box. Doesn't need to be the exact official title — the resolver handles near-misses. |
 | `year` | no, but | The single most valuable optional field. "Cowboy Bebop" matches the 1998 anime, the 2021 live-action remake *and* the 2001 film; the year settles it without you having to. |
-| `kind` | no | One of `anime`, `movie`, `live-action`, `game`. Which shelf it lands on. Left blank, it's inferred from what the source returns and you can correct it. |
+| `kind` | no | One of `anime`, `movie`, `live-action`, `game`, `book`. Which shelf it lands on. Left blank, it's inferred from what the source returns and you can correct it. |
 | `why` | no | One line on why you wanted to watch it — who recommended it, what hooked you. Free text. Genuinely hard to reconstruct six months later, and it's the nicest thing on the title page. |
 
 Rules that matter:
@@ -62,12 +62,12 @@ Rules that matter:
 
 If you don't have a list yet, this gets you one in the right shape:
 
-> Give me a CSV of things I should watch or play, with the header row `title,year,kind,why`.
-> `kind` must be exactly one of `anime`, `movie`, `live-action`, or `game`. `year` is the
-> original release year. `why` is one short sentence on why it's worth my time. Quote any
-> field containing a comma. Give me 50 rows, mixing all four kinds, and skew toward things
-> that are well regarded rather than merely popular. Output only the CSV — no commentary,
-> no code fence.
+> Give me a CSV of things I should watch, play or read, with the header row
+> `title,year,kind,why`. `kind` must be exactly one of `anime`, `movie`, `live-action`,
+> `game`, or `book`. `year` is the original release year. `why` is one short sentence on why
+> it's worth my time. Quote any field containing a comma. Give me 50 rows, mixing all five
+> kinds, and skew toward things that are well regarded rather than merely popular. Output
+> only the CSV — no commentary, no code fence.
 
 Then paste the result into the importer, check the matches, commit.
 
@@ -76,7 +76,7 @@ Then paste the result into the importer, check the matches, commit.
 Export is a full-fidelity backup, so it carries more than the starter format:
 
 ```csv
-title,year,kind,why,status,stars,queue_position,tmdb_id,igdb_id,imdb_id,added_at,watched_at,review
+title,year,kind,why,status,stars,queue_position,tmdb_id,igdb_id,imdb_id,isbn,added_at,watched_at,review
 ```
 
 Any export re-imports cleanly. The extra columns are optional on the way in, so a starter
@@ -88,7 +88,8 @@ CSV and a full export both go through the same door:
 | `stars` | `1`–`5`, or blank if unrated. |
 | `queue_position` | Integer. Blank rows are appended in file order. |
 | `tmdb_id` / `igdb_id` | Whichever source the title came from. When present, the resolver trusts it and skips the search entirely — this is what makes an export round-trip exactly. A game has an `igdb_id` and no `tmdb_id`; a film is the other way round. |
-| `imdb_id` | The outbound link for screen titles; sourced from TMDB, never typed by hand. Blank on games, which link to IGDB instead. |
+| `imdb_id` | The outbound link for screen titles; sourced from TMDB, never typed by hand. Blank on games and books, which link to IGDB and Open Library instead. |
+| `isbn` | Books only, and it is what makes a book round-trip exactly: an ISBN names one edition, an edition belongs to one Open Library work, so the resolver spends it the way it spends a `tmdb_id`. Blank on everything else. Hyphens and spaces are fine. |
 | `added_at`, `watched_at` | ISO-8601 dates. |
 | `review` | Free text, whatever you wrote after watching. |
 
@@ -101,6 +102,7 @@ CSV and a full export both go through the same door:
 | [TMDB](https://www.themoviedb.org/) | Posters, backdrops, summaries, genres, and the IMDb id behind every outbound link | `TMDB_API_KEY` |
 | [AniList](https://anilist.co/) | Anime specifics TMDB is thin on — studio, season, episode count, romaji *and* English titles | none needed |
 | [IGDB](https://www.igdb.com/) | Everything about games — portrait box art, summaries, genres, platforms, developer, release year | `IGDB_CLIENT_ID` + `IGDB_CLIENT_SECRET` |
+| [Open Library](https://openlibrary.org/) | Everything about books — cover, author, first publication year, subjects, description, ISBN | none needed |
 | [Pexels](https://www.pexels.com/) | Ambient imagery only: shelf headers, empty states, the backdrop behind the carousel | `PEXELS_API_KEY` |
 
 Pexels is deliberately **not** a source of title artwork — stock photography can't give you
@@ -108,7 +110,12 @@ real key art, and a poster wall made of stock photos is the spreadsheet problem 
 costume.
 
 IMDb has no free public API. The IMDb links here come from TMDB's `imdb_id` field. Games have
-no IMDb entry at all and link to their IGDB page instead.
+no IMDb entry at all and link to their IGDB page instead; books link to Open Library.
+
+Open Library needs no key and no signup, which makes books the one kind that works on a fresh
+clone with an empty `.env`. A book is **one item**, not one per edition — the list stores the
+*work*, so the seventy-five printings of *The Dispossessed* are a single row, the same rule
+that keeps a series from becoming one row per season.
 
 IGDB was chosen over RAWG for one specific reason: IGDB serves **portrait box art** at roughly
 the same 2:3 ratio as a film poster, so games sit on the same carousel as everything else
