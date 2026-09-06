@@ -1,0 +1,7 @@
+title,year,kind,why,status,stars,queue_position,tmdb_id,igdb_id,imdb_id,added_at,watched_at,review
+Inception,2010,movie,"Recommended twice, by people who disagree about everything",queued,,10,27205,,tt1375666,2026-09-01T10:00:00+00:00,,
+Neon Genesis Evangelion,1995,anime,"The one everybody calls ""difficult""",queued,,20,1735,,tt0112159,2026-09-01T10:00:00+00:00,,
+Outer Wilds Clone,2019,game,A game has no IMDb id at all — this row proves that column stays blank,queued,,30,,1020,,2026-09-01T10:00:00+00:00,,
+A Series With No Year,,live-action,,queued,,40,1398,,,2026-09-01T10:00:00+00:00,,
+A Film Already Watched,1994,movie,,seen,5,,278,,tt0111161,2026-09-01T10:00:00+00:00,2026-09-02T21:30:00+00:00,"Earns it, slowly, and then all at once."
+A Game Already Played,1996,game,,seen,3,,,1074,,2026-09-01T10:00:00+00:00,2026-09-03T08:00:00+00:00,
