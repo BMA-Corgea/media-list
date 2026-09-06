@@ -9,6 +9,42 @@ type: reference
 Durable lessons land here as the project runs — one entry per lesson, newest first, each
 citing the ticket/incident it came from.
 
+## A `<button>` cannot host a second door onto a different action — split the card, don't nest it (T-17)
+
+`views/add.js`'s search-result card used to be exactly one `<button>` whose only behaviour was
+add (the ticket's own incident: one press on "Dungeon Crawler Carl" committed the wrong TMDB
+match with no preview). AC3 gave the card a second, independent action — a `+` that adds
+directly, alongside an "open the description screen" action that must add nothing at all — and
+the shape that looks obvious is nesting: `<button class="card">…<button class="card__add">+
+</button></button>`.
+
+That shape does not work, for a reason that has nothing to do with this app's own logic.
+`<button>` inside `<button>` is invalid content model — browsers still render it, which is
+exactly what makes the trap easy to miss in a quick check — and a `click` on the inner button
+still BUBBLES to the outer one. Built that way, pressing `+` would fire the inner listener
+(add) AND the outer one (open), so every "quick add" would also silently navigate to the
+description screen right after adding. There is no `event.stopPropagation()` fix that isn't
+fragile: it has to be remembered on every future button the card grows, forever, by everyone
+who touches it — exactly the kind of rule a codebase forgets one refactor later.
+
+The real fix was structural, not defensive: `.card--pick` stopped being a button and became a
+plain wrapper `<div>`; the poster/title/meta press became its own `<button class="card__open">`
+(a SIBLING, not a parent); `<button class="card__add">` sits next to it, not inside it. Two
+doors, two independent buttons, one non-interactive frame around both — no event plumbing
+required to keep them from firing each other. Any card that is about to grow a second action
+should reach for this shape before reaching for `stopPropagation()`.
+
+A second, smaller trap the same change tripped: `tests/test_bundle.py` fingerprints each view
+module by one UI string assumed unique to it across `frontend/src/**/*.js`
+(`test_each_marker_string_is_unique_to_its_module`). This ticket deliberately put the literal
+string `"no art"` in `add.js`, `candidate.js` AND `title.js` — the whole point of AC5 is that a
+missing-artwork placeholder reads the same everywhere — which silently broke `add.js`'s needle,
+because `"no art"` had been its needle before it needed to be shared text. The uniqueness test
+caught it immediately and said exactly what was wrong; the trap is not noticing that
+deliberately-shared UI copy can no longer serve as any one module's fingerprint. Its needle
+has to come from that module's own unique surroundings instead (here, an aria-label sentence
+`add.js` alone constructs) — never from the phrase that is now shared on purpose.
+
 ## An assertion that cannot fail and a scenario that cannot discriminate are two different bugs — and the second one hides behind the first (T-14 round 2)
 
 `tests/browser/queue.spec.js`'s filtered-reorder test guarded `kb/notes/handoff.md` §6's
