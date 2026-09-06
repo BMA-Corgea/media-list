@@ -85,8 +85,13 @@ if [ "$BROWSERS" -eq 1 ]; then
   # imported (create_app() checks `dist.is_dir()` once) — same rule tests/conftest.py
   # documents for the pytest suite. global-setup.js does not build it; this does, so a
   # first-time `--browsers` run behaves like a first-time `start.sh` run.
-  if [ ! -d frontend/dist ]; then
-    echo "media-list: building the frontend (first run)"
+  # Rebuild when dist is MISSING **or STALE**. "Once if missing" was not enough: merging a
+  # branch that changed frontend/src into a checkout that already had a dist left the bundle
+  # six commits behind, because dist/ is gitignored and a merge never touches it. The browser
+  # suite then drove a stale app for 9.5 minutes before failing. See kb/wiki/lessons.md.
+  if [ ! -d frontend/dist ] || [ -n "$(find frontend/src frontend/index.html frontend/vite.config.js \
+        -newer frontend/dist/index.html -print -quit 2>/dev/null)" ]; then
+    echo "media-list: building the frontend (missing or stale)"
     (cd frontend && npm run build --silent)
   fi
 

@@ -58,7 +58,25 @@ _FRONTEND_DIR = _REPO_ROOT / "frontend"
 _FRONTEND_DIST = _FRONTEND_DIR / "dist"
 FRONTEND_UNAVAILABLE_REASON: str | None = None
 
-if not _FRONTEND_DIST.is_dir():
+def _frontend_is_stale() -> bool:
+    """True if `dist` is missing OR older than the sources that produce it.
+
+    "Build once if missing" was not enough. Merging T-17 into a checkout that already had a
+    `dist` left the bundle SIX commits behind the source: `dist/` is gitignored, so a merge
+    never updates it, and nothing here noticed. T-13's bundle-marker test caught it loudly —
+    two failures naming the exact modules — but the browser suite then spent 9.5 minutes
+    driving a stale app before failing. The guard worked; the harness lied to it.
+    """
+    if not _FRONTEND_DIST.is_dir():
+        return True
+    built = max((f.stat().st_mtime for f in _FRONTEND_DIST.rglob("*") if f.is_file()), default=0)
+    sources = [_FRONTEND_DIR / "index.html", _FRONTEND_DIR / "vite.config.js",
+               _FRONTEND_DIR / "package.json", *(_FRONTEND_DIR / "src").rglob("*")]
+    newest = max((f.stat().st_mtime for f in sources if f.is_file()), default=0)
+    return newest > built
+
+
+if _frontend_is_stale():
     if shutil.which("npm") is None:
         FRONTEND_UNAVAILABLE_REASON = "npm not found on PATH — cannot build frontend/dist"
     else:

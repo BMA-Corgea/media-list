@@ -9,6 +9,28 @@ type: reference
 Durable lessons land here as the project runs — one entry per lesson, newest first, each
 citing the ticket/incident it came from.
 
+## A gitignored build output makes the whole suite lie after a merge (T-17)
+
+`dist/` is gitignored, so **a merge never updates it**. Merging T-17 into a checkout that already
+had a bundle left that bundle six commits behind the source, and both the pytest harness and
+`scripts/test.sh` built the frontend *only if `dist` was **missing***, so neither noticed.
+
+What each layer did, and the lesson is in the difference:
+
+- **T-13's bundle-marker test caught it immediately and loudly** — two failures naming exactly
+  `views/add.js` and `views/candidate.js`, the two modules the merge had brought in. That check
+  exists because a green `vite build` once hid an unimported module; here it caught a stale build
+  instead. It earned its place twice.
+- **The browser suite did not.** It spent **9.5 minutes** driving a stale application and then
+  failed with 20 of 42 tests — a result that looks like a regression in the merged code and is
+  not. Slow, confusing, and pointing at the wrong thing.
+
+**The rule: build when the output is missing OR older than its sources, never "once if missing."**
+Both `tests/conftest.py` and `scripts/test.sh` now compare mtimes. A guard that works is no help
+if the harness feeds it yesterday's artifact — and the failure mode of a *stale* input is much
+harder to read than the failure mode of a *missing* one, because everything still runs.
+
+
 ## A mocked call answers before an unmocked one fails — so the test passed against a page mid-navigation to a broken screen (T-17 round 2)
 
 `tests/browser/add.spec.js`'s AC3 test is the one written to prove that the `+` under a search
