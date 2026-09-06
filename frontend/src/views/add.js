@@ -55,6 +55,8 @@ function candidateCard(candidate, onOpen, onQuickAdd) {
 
   let startX = 0;
   let startY = 0;
+  // How far the pointer has travelled during the gesture currently in progress. It belongs
+  // to ONE gesture and must not outlive it — see the click handler below.
   let moved = 0;
   add.addEventListener('pointerdown', (event) => {
     startX = event.clientX;
@@ -72,11 +74,27 @@ function candidateCard(candidate, onOpen, onQuickAdd) {
     try { add.releasePointerCapture(event.pointerId); } catch { /* already released */ }
   };
   add.addEventListener('pointerup', releaseCapture);
-  add.addEventListener('pointercancel', releaseCapture);
+  add.addEventListener('pointercancel', (event) => {
+    releaseCapture(event);
+    // A cancelled gesture (the browser took the pointer over for a scroll) synthesises no
+    // click at all, so nothing downstream would ever clear `moved`. The gesture is over
+    // here, so its distance ends here too.
+    moved = 0;
+  });
   add.addEventListener('click', (event) => {
+    // A keyboard activation is a click with no pointer behind it (`detail === 0`); it
+    // cannot be a drag, so it must never be judged by one (AC7).
+    const fromPointer = event.detail > 0;
+    const wasDrag = fromPointer && moved > DRAG_THRESHOLD;
+    // Whichever way that went, the gesture that produced this click has ENDED and its
+    // distance dies with it. `moved` used to be reset only in `pointerdown` (round 2, F1)
+    // — so an aborted drag left the button deaf: the next Enter on it, which fires no
+    // `pointerdown` at all, was swallowed by a gesture that had already finished, with no
+    // POST, no error and nothing on screen to say so.
+    moved = 0;
     // Past the threshold this was a gesture, not a press: swallow the click the browser
     // is about to synthesise, exactly as `carousel.js`'s `endDrag` does for a card open.
-    if (moved > DRAG_THRESHOLD) { event.preventDefault(); return; }
+    if (wasDrag) { event.preventDefault(); return; }
     onQuickAdd(candidate, add, card);
   });
 

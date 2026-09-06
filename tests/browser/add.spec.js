@@ -291,3 +291,36 @@ test('AC7 — a drag that starts on the + button never fires an add (T-5 pointer
   expect(adds.posts).toEqual([]);
   await expect(page.locator('.card--pick')).not.toHaveClass(/is-adding|is-added/);
 });
+
+test('AC7 — an aborted drag on the + leaves it still answering the keyboard', async ({ page, seed }) => {
+  seed([]);
+  const adds = captureAdds(page);
+  await adds.install();
+  await mockSearch(page, [DUNE]);
+
+  await search(page, 'Dune');
+  const add = page.locator('.card__add');
+  const box = await add.boundingBox();
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+
+  // An ABORTED drag: out past the 6px threshold and back onto the button, released on it.
+  // The add is correctly swallowed — that half is `AC7 — a drag that starts on the +`
+  // above, and it is not what this test is about.
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 40, y + 40, { steps: 10 });
+  await page.mouse.move(x, y, { steps: 10 });
+  await page.mouse.up();
+  expect(adds.posts).toEqual([]);
+
+  // The gesture is over, so the button has to work again — including from the keyboard,
+  // which fires no `pointerdown` and therefore never reset the old `moved` (round 2, F1).
+  // The bug's whole signature is that nothing happens: no POST, no error, no change on
+  // screen — exactly the silent failure this ticket exists to remove.
+  await add.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.hint.ok')).toContainText('Added');
+  expect(adds.posts).toHaveLength(1);
+  expect(adds.posts[0]).toMatchObject({ source: 'tmdb', source_id: '438631', media_type: 'movie' });
+});
