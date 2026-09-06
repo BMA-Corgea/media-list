@@ -101,8 +101,31 @@ function detailsFor(candidate, extra = {}) {
   };
 }
 
+/** Returns the `q` values actually sent to `/api/search`, in order — T-18's AC5 needs to
+ * prove restoring a search costs no NEW round trip, which means counting the real ones. */
 async function mockSearch(page, results) {
-  await page.route('**/api/search**', (route) => route.fulfill({ json: searchEnvelope(results) }));
+  const hits = [];
+  await page.route('**/api/search**', (route) => {
+    hits.push(new URL(route.request().url()).searchParams.get('q'));
+    return route.fulfill({ json: searchEnvelope(results) });
+  });
+  return hits;
+}
+
+/** Like `mockSearch`, but a DIFFERENT result set per query text — T-18 AC3 needs to tell
+ * "query A's grid" and "query B's grid" apart by more than just presence/absence. */
+function mockSearchPerQuery(page, resultsByQuery) {
+  const hits = [];
+  return {
+    hits,
+    async install() {
+      await page.route('**/api/search**', (route) => {
+        const q = new URL(route.request().url()).searchParams.get('q');
+        hits.push(q);
+        return route.fulfill({ json: searchEnvelope(resultsByQuery[q] || []) });
+      });
+    },
+  };
 }
 
 /** Returns the `<source>:<source_id>` keys the page actually asked for, so a test can
@@ -192,9 +215,10 @@ test('AC2 — Back adds nothing and returns to search; the browser\'s own back b
   expect(adds.posts).toEqual([]);
 
   // Reaching the screen again and using the browser's OWN back button must behave the same
-  // way (T-17 locate F4: a real route makes this ordinary navigation, not a rescue). "Back —
-  // add nothing" landed on a fresh, empty search screen (it does not have to remember a
-  // past query), so this searches again before opening the card a second time.
+  // way (T-17 locate F4: a real route makes this ordinary navigation, not a rescue). T-18
+  // means "Back — add nothing" no longer lands on a guaranteed-empty screen — it restores
+  // the 'Dune' search left behind above — but re-filling `#q` with the same text is a no-op
+  // either way, so this is agnostic to which screen it landed on.
   await search(page, 'Dune');
   await page.locator('.card__open').click();
   await expect(page.locator('.hero .title__name')).toHaveText('Dune');
@@ -421,4 +445,81 @@ test('AC7 — an aborted drag on the + leaves it still answering the keyboard', 
   await expect(page.locator('.hint.ok')).toContainText('Added');
   expect(adds.posts).toHaveLength(1);
   expect(adds.posts[0]).toMatchObject({ source: 'tmdb', source_id: '438631', media_type: 'movie' });
+});
+
+/**
+ * T-18 — "fix the back button too" (the owner, verbatim, after driving T-17). Pressing a
+ * card opens a description screen (T-17); going back used to return to `#/add` with an
+ * empty box and no results — measured live, not guessed (T-17's `live-feedback.md`:
+ * `queryAfterBack: ""`, `resultsAfterBack: 0`). His workflow is look-decide-look-at-the-next,
+ * and "Dungeon Crawler Carl" (a novel and a TV entry sharing a name) is exactly the case
+ * comparing candidates exists for.
+ */
+
+test('T-18 AC1/AC5 — the browser back button restores the query and the grid it produced, with no new /api/search call', async ({ page, seed }) => {
+  seed([]);
+  const searchHits = await mockSearch(page, [DUNE]);
+  await mockDetails(page, { 'tmdb:438631': detailsFor(DUNE) });
+
+  await search(page, 'Dune');
+  await expect(page.locator('.card__open')).toHaveCount(1);
+  expect(searchHits).toEqual(['Dune']);
+
+  await page.locator('.card__open').click();
+  await expect(page.locator('.hero .title__name')).toHaveText('Dune');
+
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/add$/);
+
+  // AC1: the query AND the grid it produced are both back — no retyping.
+  await expect(page.locator('#q')).toHaveValue('Dune');
+  await expect(page.locator('.card__open')).toHaveCount(1);
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+
+  // AC5: restoring it cost no new round trip — still exactly the one search from above.
+  expect(searchHits).toEqual(['Dune']);
+});
+
+test('T-18 AC3 — leaving mid-debounce for a NEW query never restores the OLD query\'s grid under the new text', async ({ page, seed }) => {
+  seed([]);
+  const perQuery = mockSearchPerQuery(page, {
+    // Two queries, two DIFFERENT, easily-told-apart result sets — standing in for the
+    // Dungeon Crawler Carl novel-vs-TV case the ticket names: comparing candidates is the
+    // whole point, so query A's card and query B's card must never be confusable.
+    'Dungeon Crawler Carl': [CARL_TV],
+    Carl: [DUNE],
+  });
+  await perQuery.install();
+  await mockDetails(page, { 'tmdb:332437': detailsFor(CARL_TV) });
+
+  await search(page, 'Dungeon Crawler Carl');
+  await expect(page.locator('.card__open')).toHaveCount(1);
+  await expect(page.locator('.card__title')).toHaveText('Dungeon Crawler Carl');
+
+  // Edit the box to a different query and leave the view IMMEDIATELY — well inside the
+  // 250ms debounce (add.js's DEBOUNCE_MS), so "Carl"'s search never reaches the network
+  // before the navigation below tears this view down. The grid on screen at the moment of
+  // the click is still query A's — that mismatch (box says "Carl", grid says A) is the
+  // exact state the trap lives in.
+  await page.fill('#q', 'Carl');
+  await page.locator('.card__open').click();
+  await expect(page).toHaveURL(/#\/add\/tmdb\/332437\/tv$/);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/add$/);
+
+  // The box holds what was actually typed …
+  await expect(page.locator('#q')).toHaveValue('Carl');
+  // … and once things settle, the grid is query B's OWN result — freshly re-run, never A's
+  // card wearing B's label.
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+  // Proof it was actually RE-RUN, not silently served from the stale pair: two real
+  // searches, "Carl" only after coming back, never a stray third from the cancelled timer.
+  expect(perQuery.hits).toEqual(['Dungeon Crawler Carl', 'Carl']);
+});
+
+test('T-18 AC4 — a fresh #/add (no prior search this session) still shows an empty box and no results', async ({ page, seed }) => {
+  seed([]);
+  await expect(page.locator('#q')).toHaveValue('');
+  await expect(page.locator('.card__open')).toHaveCount(0);
 });
