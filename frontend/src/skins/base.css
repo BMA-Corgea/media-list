@@ -257,10 +257,24 @@ button, input, select, textarea { font: inherit; color: inherit; }
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 22px 18px;
 }
-.card--pick {
-  border: 0; background: none; padding: 0; text-align: left; font: inherit; color: inherit;
+/* T-17: `.card--pick` is a plain wrapper now, not a button — pressing the WHOLE card used
+   to commit an add on one click (the exact regression AC4 exists to prevent). It stacks two
+   real buttons: `.card__open` (a preview, adds nothing) and `.card__add` (adds directly). */
+.card__open {
+  display: flex; flex-direction: column; gap: 9px; width: 100%;
+  border: 0; background: none; padding: 0; margin: 0; text-align: left; font: inherit;
+  color: inherit; cursor: pointer;
 }
-.card--pick:disabled { cursor: progress; }
+.card__add {
+  align-self: flex-start;
+  padding: 6px 14px;
+  border: 1px solid var(--line-strong); border-radius: 999px;
+  background: var(--bg); color: var(--muted);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
+}
+.card__add:hover, .card__add:focus-visible { color: var(--accent); border-color: var(--accent); }
+.card__add:disabled { cursor: progress; opacity: .6; }
 .card--pick.is-added .poster { outline: 2px solid var(--seen); outline-offset: 2px; }
 .card--pick.is-adding { opacity: .55; }
 
@@ -285,8 +299,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ── search + nav ────────────────────────────────────────────────────────────────── */
 .nav { display: flex; gap: 8px; }
-.addbar { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; }
-@media (max-width: 640px) { .addbar { grid-template-columns: 1fr; } }
+/* T-17 moved the `why` field off this bar and onto the description screen (see the
+   handoff's decision), so it now wraps a single search field rather than two side by side. */
+.addbar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .hint { margin: 10px 0 22px; color: var(--muted); font-size: 13px; min-height: 1.2em; }
 .hint.ok  { color: var(--seen); }
 .hint.bad { color: var(--accent); }
