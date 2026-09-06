@@ -10,7 +10,13 @@ data/
 *.db-shm
 *.sqlite
 *.sqlite3
-media-list-export*.csv
+# ANY csv, not just ones named like an export. The old rule was `media-list-export*.csv`,
+# which a file called `my-list.csv`, `backup.csv` or `pre-t16-export.csv` walks straight past —
+# and an export carries his titles AND his `why` notes and reviews ("Satoshi Kon, apparently the
+# one Aronofsky lifted from"). Found during T-16, when a build agent's own export fixture slipped
+# the glob on its NAME alone. No CSV is tracked in this repo and none ever should be by accident;
+# a deliberate fixture needs `git add -f`, which is exactly the moment to think twice.
+*.csv
 
 # ── secrets ────────────────────────────────────────────────────────────────
 .env
