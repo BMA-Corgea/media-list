@@ -114,6 +114,12 @@ async function render() {
     dismiss(node);
     return;
   }
+  // The liveness decision above is made BEFORE the await and acted on after — different
+  // moments. Two render() calls for the SAME path both pass the `current() !== token`
+  // guard, so both reach here; without this, the second overwrites `mounted` and the node
+  // the first one already mounted and displayed never has its `cleanup` run (round 2, F4).
+  // The dismissal above keeps `dismiss` at-most-once; this keeps it at-least-once.
+  if (mountedIsLive) dismiss(mounted);
   mounted = node;
   mountedIsLive = true;
   outlet.replaceChildren(node);
