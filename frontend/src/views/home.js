@@ -20,7 +20,7 @@ export async function homeView() {
     const empty = document.createElement('div');
     empty.className = 'empty';
     empty.innerHTML = `<h2>Nothing on the list yet</h2>
-      <p>Search for a film, series, anime or game and click its poster. Everything else fills itself in.</p>`;
+      <p>Search for a film, series, anime, game or book and click its poster. Everything else fills itself in.</p>`;
     const go = Object.assign(document.createElement('button'), { className: 'btn btn--primary', textContent: 'Add something' });
     go.addEventListener('click', () => navigate('/add'));
     empty.append(go);

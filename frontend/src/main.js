@@ -56,7 +56,7 @@ route(/^title\/(\d+)$/, titleView);
 // `source_id` is opaque (TMDB and IGDB ids are both numeric strings today, but nothing
 // requires that), so it is matched permissively; `media_type` is the one TMDB actually
 // needs and every candidate carries one regardless of source (tmdb.search: 'movie'/'tv',
-// igdb.search: always 'game').
+// igdb.search: always 'game', openlibrary.search: always 'book').
 route(/^add\/([^/]+)\/([^/]+)\/([^/]+)$/, candidateView);
 
 const app = document.querySelector('#app');

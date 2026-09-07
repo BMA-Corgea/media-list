@@ -9,6 +9,127 @@ type: reference
 Durable lessons land here as the project runs — one entry per lesson, newest first, each
 citing the ticket/incident it came from.
 
+## `CREATE TABLE IF NOT EXISTS` makes a schema file lie about every database that already exists (T-16)
+
+`backend/db.py::bootstrap` applies `schema.sql` on every boot and every statement in it is
+`IF NOT EXISTS`. It is tempting to read that as "this file is the whole migration story for
+as long as changes are additive" — a new column feels harmless the way a new CHECK does not.
+**That reading is false for a column exactly as much as for a constraint, and round 1 of this
+very ticket's own review shipped it as advice before catching itself.** `IF NOT EXISTS`
+guards the STATEMENT — whether `titles` exists at all — not anything inside it. Once a
+database has the table, `CREATE TABLE IF NOT EXISTS titles (...)` is a total no-op, so
+neither a new column nor a changed constraint in that parenthesised list ever reaches an
+existing database. The owner's real database was verified still carrying
+`CHECK (kind IN ('anime','movie','live-action','game'))` long after the file said otherwise,
+and it genuinely rejected a book insert; **proved again for a plain column**, not just a
+constraint — adding `pages INTEGER` to schema.sql on an already-migrated database, without
+bumping `SCHEMA_VERSION`, gave `'pages' in table -> False` on the next boot and
+`no such column: pages` on the first insert naming it.
+
+Nothing warns you. The file reads correctly, a fresh `rm -rf data` boot behaves correctly,
+the tests (which build fresh databases) pass — and the one machine that matters is the only
+place the old shape survives. **The fresh-install path and the upgrade path are different
+code paths, and only one of them is exercised by a test suite that starts from an empty
+directory.** SQLite cannot `ALTER` a CHECK, so the fix for a constraint is a full table
+rebuild: create, copy, drop, rename. A plain column needs the exact same rebuild — there is
+no cheaper path for either one.
+
+**The one statement in `schema.sql` that genuinely is self-applying is a NEW
+`CREATE INDEX IF NOT EXISTS`.** That is not a special case of the rule above, it is a
+different rule: the object a `CREATE INDEX` statement guards is the index itself, and a
+brand-new index name really is absent from an old database, so the statement actually runs.
+A `CREATE TABLE` statement guards the table, and the table is exactly the thing that is
+*not* absent — so bumping `SCHEMA_VERSION` is required for a new column or a changed
+constraint, and required for neither only when the new thing is an index.
+
+## `PRAGMA foreign_keys` is a silent no-op inside a transaction (T-16)
+
+SQLite's own table-rebuild procedure requires `PRAGMA foreign_keys=OFF` around the swap, and
+`db.py::_connect` turns them ON for every connection this app opens. The trap is that the
+pragma is **ignored, without any error, if a transaction is already open** — so
+`BEGIN; PRAGMA foreign_keys=OFF; ...` looks exactly like the correct code and does nothing.
+It has to be flipped BEFORE `BEGIN` and restored after `COMMIT`, and `_rebuild_titles` reads
+it back and raises rather than trusting that it took. A pragma that fails by returning
+success is worth a verification line, not a comment.
+
+## A migration's version stamp must commit in the same transaction as the change it describes (T-16)
+
+The gate for "has this database been migrated?" is `PRAGMA user_version`. The obvious
+arrangement — apply `schema.sql`, then migrate — is backwards and silently fatal, because
+`schema.sql` stamps `user_version` itself: every old database would be marked current before
+anything had looked at its actual table, and the migration would never run on the one file
+it exists for. So `migrate()` runs BEFORE `executescript`.
+
+The subtler half: the rebuild replays `schema.sql`'s own `PRAGMA user_version` INSIDE its
+transaction, so the version and the table shape it describes commit together. Stamping it
+after the commit leaves a window where the shape is new and the version says old — a crash
+there causes a second, pointless rebuild. Stamping before leaves the opposite window, which
+loses the migration entirely. **Version and shape are one fact; write them once.**
+
+## What a naive table rebuild silently loses (T-16)
+
+Three things, none of which raises:
+
+* **`SELECT *`.** `INSERT INTO new SELECT * FROM old` shifts every value one column left the
+  first time someone inserts a column into the MIDDLE of the schema file. Column order is not
+  a contract; column names are. Copy by name, on both sides, from `PRAGMA table_info`.
+* **The indexes.** `DROP TABLE` takes them with it. Losing the UNIQUE one does not raise —
+  it just quietly starts letting duplicates onto the list.
+* **The AUTOINCREMENT high-water mark.** `sqlite_sequence` is rebuilt from the copied rows,
+  so it resets to `max(id)` and the next insert reuses the id of a row the user deleted. A
+  test only catches this if its fixture has a deleted row; if `seq == max(id)` the bug is
+  invisible.
+
+And a fourth, which is a refusal rather than a loss: if the new schema lacks a column the old
+table has, that is silent data destruction, not a migration. `_rebuild_titles` raises.
+
+The rebuild also builds its staging table FROM `schema.sql` (renaming the statement) rather
+than from a hand-copied `CREATE TABLE` in Python. A second declaration of the same table is
+free to drift from the first, which is the exact class of bug this whole ticket was about.
+
+## Crash-safety needs a real kill — an exception tests the cleanup path, not the crash (T-16)
+
+To prove the rebuild is interrupt-safe, the tests spawn a real interpreter and stop it with
+`os._exit(9)` at three points inside the transaction, the important one being immediately
+after `DROP TABLE titles`, when the original is gone and the only copy of the list lives in
+an uncommitted staging table. `os._exit` skips finally-blocks, connection close and
+interpreter shutdown — which is what a SIGKILL or a power cut does.
+
+Raising an exception in-process instead would have exercised the `except: ROLLBACK` handler.
+That is a *weaker and different* claim: it proves the code tidies up while it is still
+running, which is not the scenario anyone is afraid of. The tests also assert the child
+really died (exit code 9), so a trigger string that stops matching any statement fails loudly
+instead of quietly interrupting nothing and passing.
+
+## `.gitignore` protects a filename pattern, not a category of secret (T-16)
+
+The privacy rule is a glob: `media-list-export*.csv`, alongside `data/` and `*.db`. AC6
+needed a pre-change CSV export kept as a test fixture, and the obvious file —
+`tests/fixtures/pre-t16-export.csv`, holding a real export of the owner's list and his
+personal "why" notes — sails straight past that glob **on its name alone** and would have
+been committed to a public repo by a rule that exists to prevent exactly that.
+
+The fixture was rebuilt as synthetic rows through the same pre-change code, and the real
+export kept out of the tree. When a file is about to be committed, the question is not
+"is it gitignored?" but "what does it contain?" — the ignore rules encode the answer for the
+filenames somebody thought of.
+
+## A `cd` at the front of a compound command does not survive a backgrounded job (T-16)
+
+A verification step written as
+`cd <worktree> && rm -rf data && <start server> & ... ; ls -la data/` ran its first half in
+the worktree and its second half in the **main checkout**, because backgrounding resets the
+shell the later statements run in. The `ls` and a following `sqlite3` therefore opened the
+OWNER'S real database instead of the throwaway one — read-only as it turned out, and it was
+proved byte-identical afterwards, but it was luck rather than design that the destructive
+statement sat before the `&` and not after it.
+
+Absolute paths everywhere in agent shell commands, not a leading `cd` — and when a command
+mixes a background job with filesystem work, put the paths in a script file where they cannot
+be re-interpreted. The nearby rule this reinforces: a step that says "this must never touch
+X" needs its own positive check that X is unchanged (`scripts/test.sh` already does this for
+the database's mtime, which is why the near-miss was detectable at all).
+
 ## A gitignored build output makes the whole suite lie after a merge (T-17)
 
 `dist/` is gitignored, so **a merge never updates it**. Merging T-17 into a checkout that already

@@ -3,8 +3,8 @@
 import { api } from '../api.js';
 import { navigate } from '../router.js';
 import { pickIndex, rotationFor, buildWheel } from '../wheel.js';
+import { KIND_FILTERS as KINDS } from '../kinds.js';
 
-const KINDS = ['all', 'anime', 'movie', 'live-action', 'game'];
 const SPIN_MS = 4400;
 
 const prefersReducedMotion = () =>

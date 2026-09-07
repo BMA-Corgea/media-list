@@ -23,14 +23,19 @@ def serialise(row: sqlite3.Row) -> dict:
         raw = record.get(column)
         record[column] = json.loads(raw) if raw else ([] if column == "genres" else {})
 
-    # The outbound link differs by kind and is derived, never stored: games have no IMDb
-    # entry at all, so a single "link" column would have been null half the time.
+    # The outbound link differs by kind and is derived, never stored: games and books have
+    # no IMDb entry at all, so a single "link" column would have been null half the time.
     if record.get("imdb_id"):
         record["link"] = f"https://www.imdb.com/title/{record['imdb_id']}/"
         record["link_label"] = "IMDb"
     elif (record.get("detail") or {}).get("igdb_url"):
         record["link"] = record["detail"]["igdb_url"]
         record["link_label"] = "IGDB"
+    elif (record.get("detail") or {}).get("openlibrary_url"):
+        # Books have no IMDb entry either, for the same reason games do not. Open Library
+        # is the outbound link, derived here with the other two rather than stored.
+        record["link"] = record["detail"]["openlibrary_url"]
+        record["link_label"] = "Open Library"
     else:
         record["link"] = None
         record["link_label"] = None

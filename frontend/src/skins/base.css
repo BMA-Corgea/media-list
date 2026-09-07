@@ -51,6 +51,9 @@
   --wheel-b:     #c9d3dc;
   --wheel-c:     #d3cfc0;
   --wheel-d:     #cdd7cb;
+  /* T-16, F4: the fifth kind (book) had no token and fell back to --wheel-a, sharing
+     anime's colour on the one screen whose entire job is telling wedges apart. */
+  --wheel-e:     #d7c8d6;
   --seen:        #4a7c59;
 
   /* Text laid over a PHOTOGRAPH, which has its own brightness regardless of the skin. This
@@ -97,6 +100,7 @@
     --wheel-b:   #23303c;
     --wheel-c:   #33302a;
     --wheel-d:   #22332c;
+    --wheel-e:   #362a35;
     --seen:        #6ea87d;
     --shadow:      0 1px 2px rgba(0, 0, 0, .5), 0 8px 24px rgba(0, 0, 0, .45);
     --shadow-lift: 0 4px 10px rgba(0, 0, 0, .55), 0 22px 48px rgba(0, 0, 0, .6);

@@ -137,6 +137,20 @@ TMDB_LIMIT = RateLimit("tmdb", per_second=20, open_requests=8)
 #: this is generous for the only path that uses it.
 ANILIST_LIMIT = RateLimit("anilist", per_second=1.5, open_requests=4)
 
-# Artwork is deliberately NOT paced here. `artwork.cache` fetches from image.tmdb.org and
-# images.igdb.com — CDNs with no published request limit — and it is already bounded to
-# `main.SEARCH_CONCURRENCY` downloads at a time because it only ever runs inside `main._fetch`.
+#: Open Library publishes no hard number for `search.json`, only a request to be gentle — and
+#: an UNAUTHENTICATED source has no key for them to throttle, so the only thing standing
+#: between a thousand-row book import and an IP block is this line. 5/s is deliberately
+#: conservative: below TMDB's 20 because there is no published allowance to sit under, above
+#: AniList's 1.5 because a book import consults this source once PER ROW rather than once per
+#: title stored, and `details` costs two requests rather than one.
+#:
+#: Their covers API does document 100 requests per 5 minutes — but only for covers addressed
+#: by ISBN or OLID. `openlibrary.cover_url` addresses them by cover ID, which is the
+#: unthrottled form, and artwork is fetched through `artwork.cache` anyway (see the note at
+#: the bottom of this file about why that path is bounded elsewhere).
+OPENLIBRARY_LIMIT = RateLimit("openlibrary", per_second=5, open_requests=4)
+
+# Artwork is deliberately NOT paced here. `artwork.cache` fetches from image.tmdb.org,
+# images.igdb.com and covers.openlibrary.org — CDNs with no published request limit for the
+# by-id form this app uses — and it is already bounded to `main.SEARCH_CONCURRENCY`
+# downloads at a time because it only ever runs inside `main._fetch`.

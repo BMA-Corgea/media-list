@@ -2,9 +2,7 @@
 
 import { api } from '../api.js';
 import { navigate } from '../router.js';
-import { verbFor } from '../kinds.js';
-
-const KINDS = ['all', 'anime', 'movie', 'live-action', 'game'];
+import { verbFor, KIND_FILTERS as KINDS } from '../kinds.js';
 
 export function starsEl(n, { interactive = false, onPick } = {}) {
   const wrap = document.createElement(interactive ? 'div' : 'span');

@@ -130,7 +130,7 @@ export async function addView() {
     <p class="section-title">Add to the list</p>
     <div class="addbar">
       <input class="field" id="q" type="search" autocomplete="off" spellcheck="false"
-             placeholder="Search a film, series, anime or game…" aria-label="Search for a title" />
+             placeholder="Search a film, series, anime, game or book…" aria-label="Search for a title" />
     </div>
     <p class="hint" id="hint">Type a few words. Click a card to see it before you add it, or
       press its <strong>+</strong> to add it straight away.</p>

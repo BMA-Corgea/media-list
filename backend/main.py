@@ -26,7 +26,7 @@ from .artwork import cache as cache_art
 from . import csvio
 from .config import config
 from .db import bootstrap, connection, execute, query
-from .sources import anilist, igdb, tmdb
+from .sources import anilist, igdb, openlibrary, tmdb
 from .titles import now, serialise
 from .sources.base import SourceError
 
@@ -45,10 +45,22 @@ def health() -> JSONResponse:
             "version": __version__,
             "db_path": str(config.db_path),
             "db_exists": config.db_path.exists(),
+            # Can this source be used RIGHT NOW. Not "does it have a key" — those stopped
+            # being the same question when Open Library arrived, because it has no key to
+            # have. Reporting `true` for it under a map that used to mean "credentials
+            # found" would be a quiet lie, so what each source NEEDS is published beside
+            # what each source IS.
             "sources": {
                 "tmdb": tmdb.available(),
                 "igdb": igdb.available(),
+                "openlibrary": openlibrary.available(),
                 "pexels": bool(config.pexels_api_key),
+            },
+            "needs_credentials": {
+                "tmdb": True,
+                "igdb": True,
+                "openlibrary": False,
+                "pexels": True,
             },
         }
     )
@@ -71,6 +83,12 @@ async def search(q: str = Query(min_length=1, max_length=120)) -> JSONResponse:
         lookups.append(("tmdb", tmdb.search(q)))
     if igdb.available():
         lookups.append(("igdb", igdb.search(q)))
+    # No `if`: Open Library needs no credentials, so there is no configuration under which
+    # books are unavailable. It is also why the 503 below is now unreachable in practice —
+    # kept, because it guards the shape of this list rather than the state of a .env, and a
+    # future source could empty it again.
+    if openlibrary.available():
+        lookups.append(("openlibrary", openlibrary.search(q)))
 
     if not lookups:
         raise HTTPException(503, "no metadata sources are configured — add credentials to .env")
@@ -94,7 +112,10 @@ async def search(q: str = Query(min_length=1, max_length=120)) -> JSONResponse:
     needle = q.strip().lower()
     results.sort(key=lambda r: (r["title"].lower() != needle, -float(r.get("popularity") or 0)))
 
-    disabled = [n for n in ("tmdb", "igdb") if n not in status]
+    # Named so the UI can say WHICH source is missing rather than showing a short list and
+    # letting it read as "that is everything there is". `openlibrary` is in the tuple for
+    # completeness and will never appear in it, because it is never switched off.
+    disabled = [n for n in ("tmdb", "igdb", "openlibrary") if n not in status]
     return JSONResponse({"query": q, "results": results, "sources": status, "disabled": disabled})
 
 
@@ -123,6 +144,8 @@ async def _fetch(source: str, source_id: str, media_type: str | None) -> dict:
             record["detail"] = {**record.get("detail", {}), **extras}
     elif source == "igdb":
         record = await igdb.details(source_id)
+    elif source == "openlibrary":
+        record = await openlibrary.details(source_id)
     else:
         raise HTTPException(404, f"unknown source {source!r}")
 
@@ -172,13 +195,14 @@ async def add_title(payload: dict = Body(...)) -> JSONResponse:
         top = conn.execute("SELECT COALESCE(MAX(queue_position), 0) FROM titles").fetchone()[0]
         try:
             cursor = conn.execute(
-                """INSERT INTO titles (source, source_id, imdb_id, anilist_id, title,
+                """INSERT INTO titles (source, source_id, imdb_id, anilist_id, isbn, title,
                         original_title, year, kind, summary, poster_path, backdrop_path,
                         genres, detail, why, status, queue_position, added_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?)""",
                 (
                     record["source"], record["source_id"], record.get("imdb_id"),
-                    record.get("anilist_id"), record["title"], record.get("original_title"),
+                    record.get("anilist_id"), record.get("isbn"),
+                    record["title"], record.get("original_title"),
                     record.get("year"), record["kind"], record.get("summary"),
                     record.get("poster_path"), record.get("backdrop_path"),
                     json.dumps(record.get("genres") or []), json.dumps(detail),
@@ -307,6 +331,8 @@ async def _search_all(title: str) -> list[dict]:
         found += await tmdb.search(title)
     if igdb.available():
         found += await igdb.search(title)
+    if openlibrary.available():
+        found += await openlibrary.search(title)
     return found
 
 
@@ -330,7 +356,10 @@ class _Lookups:
 
     def __init__(self, concurrency: int = SEARCH_CONCURRENCY) -> None:
         self.gate = asyncio.Semaphore(concurrency)
-        self.tasks: dict[str, asyncio.Task] = {}
+        # Keyed by (WHAT KIND of lookup, its subject). A bare string key would put a
+        # title and an ISBN in the same namespace, where a book literally called "isbn:X"
+        # would collide with the lookup for ISBN X. Costs nothing to rule out.
+        self.tasks: dict[tuple[str, str], asyncio.Task] = {}
 
     async def _search(self, title: str) -> list[dict]:
         async with self.gate:
@@ -349,10 +378,28 @@ class _Lookups:
         # the rest. Deliberately NOT added now: shielding cannot be tested without the
         # per-row cancellation that does not exist yet, and untested cancellation code is
         # worse than a named trap.
-        key = " ".join(title.split()).casefold()
+        key = ("title", " ".join(title.split()).casefold())
         task = self.tasks.get(key)
         if task is None:
             task = self.tasks[key] = asyncio.create_task(self._search(title))
+        return await task
+
+    async def _by_isbn(self, isbn: str) -> dict | None:
+        async with self.gate:
+            return await openlibrary.by_isbn(isbn)
+
+    async def get_isbn(self, isbn: str) -> dict | None:
+        """The work one ISBN names — same gate, same cache, same one door as a title search.
+
+        It goes through this class rather than calling the source directly so that an import
+        of a thousand book rows is paced and capped by the thing that paces and caps
+        everything else. A lookup added beside the gate instead of behind it is how an
+        import quietly ends up making more concurrent requests than the ceiling says.
+        """
+        key = ("isbn", isbn.strip().casefold())
+        task = self.tasks.get(key)
+        if task is None:
+            task = self.tasks[key] = asyncio.create_task(self._by_isbn(isbn))
         return await task
 
     def close(self) -> None:
@@ -387,6 +434,27 @@ async def _resolve_row(row: dict, existing: set, lookups: _Lookups) -> dict:
                            "title": row["title"], "year": row["year"], "kind": row["kind"]}
         entry["state"] = "duplicate" if (source, source_id) in existing else "matched"
         return entry
+
+    # AN ISBN IS AN ID, so it is spent like one, before any searching happens.
+    # `csvio` keeps one id column per source precisely so an export re-imports as the same
+    # thing instead of being re-guessed by title. Books have no id column — the owner asked
+    # for `isbn` and only `isbn` — and this is what makes that enough: an ISBN names one
+    # edition, an edition belongs to exactly one work, so it resolves EXACTLY rather than
+    # ranking well. It costs one request, unlike the tmdb/igdb branch above which costs
+    # none, so it sits here rather than up there.
+    if row.get("isbn"):
+        try:
+            book = await lookups.get_isbn(row["isbn"])
+        except SourceError as error:
+            book = None
+            entry["note"] = f"the ISBN could not be looked up ({error.detail}) — searched by title instead"
+        if book:
+            entry["chosen"] = book
+            entry["candidates"] = [book]
+            entry["state"] = ("duplicate" if (book["source"], book["source_id"]) in existing
+                              else "matched")
+            return entry
+        entry.setdefault("note", "no work carries that ISBN — searched by title instead")
 
     try:
         found = await lookups.get(row["title"])
@@ -746,11 +814,16 @@ async def import_commit(payload: dict = Body(...)) -> JSONResponse:
             status = "seen" if (row.get("status") == "seen" and row.get("stars")) else "queued"
             top += 10
             conn.execute(
-                """INSERT INTO titles (source, source_id, imdb_id, anilist_id, title, original_title,
-                        year, kind, summary, poster_path, backdrop_path, genres, detail, why,
-                        status, stars, review, queue_position, added_at, watched_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                """INSERT INTO titles (source, source_id, imdb_id, anilist_id, isbn, title,
+                        original_title, year, kind, summary, poster_path, backdrop_path, genres,
+                        detail, why, status, stars, review, queue_position, added_at, watched_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (record["source"], record["source_id"], record.get("imdb_id"), record.get("anilist_id"),
+                 # The row's own ISBN is the fallback: a CSV row resolved BY isbn already
+                 # names the edition the owner had, and `openlibrary.search` does not carry
+                 # one back. Losing it here would make the next export drop the column that
+                 # got this row matched in the first place.
+                 record.get("isbn") or row.get("isbn"),
                  record["title"], record.get("original_title"), record.get("year") or row.get("year"),
                  record["kind"], record.get("summary"), record.get("poster_path"), record.get("backdrop_path"),
                  json.dumps(record.get("genres") or []), json.dumps(detail), row.get("why"),

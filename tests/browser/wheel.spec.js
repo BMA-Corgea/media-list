@@ -20,6 +20,11 @@ const ITEMS = [
   { title: 'Wheel Four', kind: 'live-action' },
   { title: 'Wheel Five', kind: 'movie' },
   { title: 'Wheel Six', kind: 'anime' },
+  // T-16 round 2, F3/F4: two books, so this suite actually exercises the fifth kind rather
+  // than only the four that predate it. Two, like anime and movie above — a lone wedge
+  // exercises a pre-existing single-item wheel-geometry edge case this ticket does not own.
+  { title: 'Wheel Seven', kind: 'book' },
+  { title: 'Wheel Eight', kind: 'book' },
 ];
 
 test.beforeEach(async ({ page, seed }) => {
@@ -59,4 +64,36 @@ test('spinning inside a kind filter still lands on the announced title', async (
   const { rotationDeg, revealedTitle } = await spinAndRead(page);
   const landedIndex = segmentAt(rotationDeg, eligible.length);
   expect(eligible[landedIndex].title).toBe(revealedTitle);
+});
+
+// ── T-16 round 2, F3/F4: the fifth kind ───────────────────────────────────────────────────
+
+test('F3 — a book chip exists and spinning inside it still lands on the announced title', async ({ page }) => {
+  const chip = page.getByRole('button', { name: 'book', exact: true });
+  await expect(chip).toBeVisible();
+  await chip.click();
+  const eligible = ITEMS.filter((item) => item.kind === 'book');
+  await expect(page.locator('.wheel__disc .wheel__wedge')).toHaveCount(eligible.length);
+
+  const { rotationDeg, revealedTitle } = await spinAndRead(page);
+  const landedIndex = segmentAt(rotationDeg, eligible.length);
+  expect(eligible[landedIndex].title).toBe(revealedTitle);
+});
+
+test('F4 — a book wedge never shares anime\'s computed colour', async ({ page }) => {
+  // Every wedge, `all` filter, so both kinds sit on the disc at once and their
+  // COMPUTED fills (the `var(--wheel-*)` resolved by the browser, not the attribute text)
+  // can be compared directly.
+  await expect(page.locator('.wheel__disc .wheel__wedge')).toHaveCount(ITEMS.length);
+
+  const fillFor = (kind) => {
+    const index = ITEMS.findIndex((item) => item.kind === kind);
+    return page.locator('.wheel__disc .wheel__wedge').nth(index).evaluate((el) => getComputedStyle(el).fill);
+  };
+
+  const animeFill = await fillFor('anime');
+  const bookFill = await fillFor('book');
+  expect(animeFill).not.toBe('none');
+  expect(bookFill).not.toBe('none');
+  expect(bookFill, `book resolved to the same fill as anime: ${bookFill}`).not.toBe(animeFill);
 });

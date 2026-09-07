@@ -25,6 +25,8 @@ function facts(record) {
 
   const items = record.kind === 'game'
     ? [fact('Developer', d.developer), fact('Platforms', d.platforms), fact('Genres', record.genres)]
+    : record.kind === 'book'
+    ? [fact('Author', d.author), fact('Pages', d.pages), fact('Genres', record.genres)]
     : [
         fact('Studio', d.studio),
         fact('Season', d.season),
