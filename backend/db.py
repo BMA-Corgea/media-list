@@ -27,9 +27,13 @@ SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 #: Must match `PRAGMA user_version` at the bottom of schema.sql.
 #:
 #: This is the flag, and the ONLY flag, that says whether an existing `titles` table predates
-#: the T-16 rebuild. Bump BOTH numbers together whenever a constraint changes; adding a plain
-#: column or an index still needs neither, because those are self-applying through
-#: `CREATE ... IF NOT EXISTS`.
+#: the T-16 rebuild. Bump BOTH numbers together whenever a CONSTRAINT changes OR a COLUMN is
+#: added — neither one is self-applying. `CREATE TABLE IF NOT EXISTS` is gated on the TABLE
+#: already existing, not on what changed inside its definition, so it is a total no-op on any
+#: database that already has `titles` — proved live by adding a column here without bumping
+#: this number and watching `no such column` on the next insert. The only statement in
+#: schema.sql that really is self-applying is a NEW `CREATE INDEX IF NOT EXISTS`, because the
+#: object it guards (the index) genuinely is absent from an old database.
 SCHEMA_VERSION = 2
 
 #: The half-built table `_rebuild_titles` fills before it swaps. Named, not anonymous, so

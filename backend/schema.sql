@@ -1,18 +1,27 @@
 -- media-list schema.
 --
--- Applied in full on every boot. Every statement is IF NOT EXISTS, which made this file
--- the whole migration story for as long as changes were additive.
+-- Applied in full on every boot, and every statement is IF NOT EXISTS. That guards the
+-- STATEMENT, not what changed inside it: `CREATE TABLE IF NOT EXISTS titles (...)` is a
+-- total no-op the moment a database already has `titles`, no matter what the parenthesised
+-- column list says. So a new COLUMN reaches a fresh database only — exactly like a changed
+-- CONSTRAINT does, not differently. `CREATE TABLE IF NOT EXISTS` is a NO-OP on a database
+-- that already has the table, so editing a CHECK constraint (or adding a column) here
+-- changes NOTHING on an existing one — the old shape survives, silently, and only a fresh
+-- `rm -rf data` would ever show the new one. SQLite cannot ALTER a CHECK, so widening
+-- `source` and `kind` below needed a real table rebuild. It lives in
+-- `db.py::_rebuild_titles`, which builds the new table FROM THIS FILE so the two can never
+-- drift.
 --
--- T-16 IS THE TICKET THAT BROKE THAT, and the comment below used to promise otherwise.
--- `CREATE TABLE IF NOT EXISTS` is a NO-OP on a database that already has the table, so
--- editing a CHECK constraint here changes NOTHING on an existing database — the old
--- constraint survives, silently, and only a fresh `rm -rf data` would ever show the new
--- one. SQLite cannot ALTER a CHECK, so widening `source` and `kind` below needed a real
--- table rebuild. It lives in `db.py::_rebuild_titles`, which builds the new table FROM
--- THIS FILE so the two can never drift.
+-- PROVEN, not assumed: a `pages INTEGER` column was added here, on a database already
+-- migrated to T-16, with `SCHEMA_VERSION` left alone. Booting again gave
+-- `'pages' in table -> False`, and an insert naming it failed with
+-- `no such column: pages`. A plain column is not self-applying.
 --
--- So: adding a COLUMN or an INDEX here is still self-applying. Changing a CONSTRAINT is
--- not, and needs `SCHEMA_VERSION` in db.py bumped alongside the edit.
+-- The ONE statement in this file that really is self-applying is a NEW
+-- `CREATE INDEX IF NOT EXISTS`: unlike the table, the object that statement guards (the
+-- index) genuinely is absent from an old database, so it actually runs. A new COLUMN and
+-- any CONSTRAINT change are both never self-applying — either one needs `SCHEMA_VERSION`
+-- in db.py bumped alongside the edit, so `_rebuild_titles` carries it across.
 -- `user_version` is what the migration branches on — it is stamped at the bottom.
 
 CREATE TABLE IF NOT EXISTS titles (

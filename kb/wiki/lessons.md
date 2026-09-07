@@ -12,20 +12,35 @@ citing the ticket/incident it came from.
 ## `CREATE TABLE IF NOT EXISTS` makes a schema file lie about every database that already exists (T-16)
 
 `backend/db.py::bootstrap` applies `schema.sql` on every boot and every statement in it is
-`IF NOT EXISTS`, which made the file "the whole migration story" for as long as changes were
-additive. It is not one for a CONSTRAINT. On a database that already has the table, the
-CREATE is a no-op — so the CHECK constraints actually enforced are the ones from the boot
-that first created the file, and editing them in `schema.sql` changes nothing at all. The
-owner's real database was verified still carrying
+`IF NOT EXISTS`. It is tempting to read that as "this file is the whole migration story for
+as long as changes are additive" — a new column feels harmless the way a new CHECK does not.
+**That reading is false for a column exactly as much as for a constraint, and round 1 of this
+very ticket's own review shipped it as advice before catching itself.** `IF NOT EXISTS`
+guards the STATEMENT — whether `titles` exists at all — not anything inside it. Once a
+database has the table, `CREATE TABLE IF NOT EXISTS titles (...)` is a total no-op, so
+neither a new column nor a changed constraint in that parenthesised list ever reaches an
+existing database. The owner's real database was verified still carrying
 `CHECK (kind IN ('anime','movie','live-action','game'))` long after the file said otherwise,
-and it genuinely rejected a book insert.
+and it genuinely rejected a book insert; **proved again for a plain column**, not just a
+constraint — adding `pages INTEGER` to schema.sql on an already-migrated database, without
+bumping `SCHEMA_VERSION`, gave `'pages' in table -> False` on the next boot and
+`no such column: pages` on the first insert naming it.
 
 Nothing warns you. The file reads correctly, a fresh `rm -rf data` boot behaves correctly,
 the tests (which build fresh databases) pass — and the one machine that matters is the only
-place the old constraint survives. **The fresh-install path and the upgrade path are
-different code paths, and only one of them is exercised by a test suite that starts from an
-empty directory.** SQLite cannot `ALTER` a CHECK, so the fix is a full table rebuild:
-create, copy, drop, rename.
+place the old shape survives. **The fresh-install path and the upgrade path are different
+code paths, and only one of them is exercised by a test suite that starts from an empty
+directory.** SQLite cannot `ALTER` a CHECK, so the fix for a constraint is a full table
+rebuild: create, copy, drop, rename. A plain column needs the exact same rebuild — there is
+no cheaper path for either one.
+
+**The one statement in `schema.sql` that genuinely is self-applying is a NEW
+`CREATE INDEX IF NOT EXISTS`.** That is not a special case of the rule above, it is a
+different rule: the object a `CREATE INDEX` statement guards is the index itself, and a
+brand-new index name really is absent from an old database, so the statement actually runs.
+A `CREATE TABLE` statement guards the table, and the table is exactly the thing that is
+*not* absent — so bumping `SCHEMA_VERSION` is required for a new column or a changed
+constraint, and required for neither only when the new thing is an index.
 
 ## `PRAGMA foreign_keys` is a silent no-op inside a transaction (T-16)
 
