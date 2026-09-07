@@ -47,6 +47,7 @@ const TINT = {
   movie: 'var(--wheel-b)',
   'live-action': 'var(--wheel-c)',
   game: 'var(--wheel-d)',
+  book: 'var(--wheel-e)',
 };
 
 const SIZE = 380;

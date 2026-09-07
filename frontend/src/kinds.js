@@ -19,3 +19,13 @@ const VERBS = {
 const FALLBACK = { past: 'finished', imperative: 'Mark as finished', noun: 'title' };
 
 export const verbFor = (kind) => VERBS[kind] || FALLBACK;
+
+/**
+ * Every kind the filter chips offer, `all` first — the queue, the archive and the wheel
+ * each used to keep their own copy of this array, so a new kind (T-16's `book`) reached
+ * `kinds.js` and nowhere else: visible under `all`, unfilterable and unspinnable
+ * everywhere it mattered. One list here means the next kind is one edit, not four.
+ * The order is the display order, not `VERBS`' insertion order — kept as it was before this
+ * list existed, with each new kind appended rather than however `Object.keys` happens to run.
+ */
+export const KIND_FILTERS = ['all', 'anime', 'movie', 'live-action', 'game', 'book'];

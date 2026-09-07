@@ -9,8 +9,8 @@
 
 import { api } from '../api.js';
 import { navigate } from '../router.js';
+import { KIND_FILTERS as KINDS } from '../kinds.js';
 
-const KINDS = ['all', 'anime', 'movie', 'live-action', 'game'];
 const DRAG_THRESHOLD = 6;
 
 export async function queueView() {
