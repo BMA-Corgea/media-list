@@ -32,6 +32,45 @@ The last two need a real browser to assert against and are T-14's job.
 | Chi-square + negative control if `pickIndex` changes | A max-deviation bound was statistically naive and failed a correct picker |
 | Assert **computed** styles, not stylesheet text | An undefined CSS custom property fails silently and looks deliberate |
 
+## STOPPED 2026-09-06 ~00:30, mid-flight — read this first
+
+Three tickets shipped and merged today (T-13 runner · T-14 two engines · T-15 large-CSV import),
+then T-17 (add-tab preview). **Nothing is half-merged. `main` is clean and green: 134 pytest
+passed, working tree clean.** All in-flight work is safe on its own branch.
+
+| Ticket | State | Branch | What is left |
+| --- | --- | --- | --- |
+| **T-16 books** | at `auto-review`, **built and independently verified**, NOT merged | `t16-books` @ `0a1d24b` | needs a review round, then merge + the two cross-ticket patches below |
+| **T-18 back button** | at `build`, **rework attempt 2 INTERRUPTED mid-flight** | `t18-back-keeps-search` @ `912b8fe` | round-1 work is committed; the F1 router-race fix was *in progress and is NOT committed* — restart it from `.autodev/evidence/T-18/auto-review.md` |
+
+### T-16 is proven where it counts
+The migration was re-run by the dispatching session on a copy of the owner's database: 15 rows in,
+15 out, **zero drift on every pre-existing column**, the `seen` row keeps its stars and review, the
+NULL poster stays NULL. Interrupt safety checked at **25 random kill points — 25/25 reopened with
+every row, 0 damaged**. His original is byte-identical (sha256 `5f122ead…`).
+
+### Two patches T-16 deliberately did NOT make (T-18 owned those files)
+Apply after T-18 merges:
+1. **`views/title.js::facts()` branches `game` vs everything-else**, so a book takes the
+   screen-title branch and **never renders its author**. `detail.author` / `detail.pages` are
+   already stored. Exact patch in `.autodev/handoffs/T-16.md`.
+2. `frontend/src/views/add.js:112` placeholder still says "film, series, anime or game" — needs
+   "book". Plus an optional `main.js` comment.
+
+### T-18's open finding, reproduced and not yet fixed
+`router.js`'s `render()` awaits the incoming view **before** dismissing the outgoing one, and
+`addView()` is the only synchronous view — so a second Add mount reads the stash before the first
+mount's `cleanup()` writes it. Probe: search "dune", bounce through a Queue with `/api/titles`
+delayed 1.5s, and `#q` comes back **empty**. Full findings in `.autodev/evidence/T-18/auto-review.md`.
+
+### Also today, on main
+- **`.gitignore` now ignores `*.csv`**, not just `media-list-export*.csv`. The old rule was
+  name-based, so `my-list.csv` or `backup.csv` would have been committed to a public repo carrying
+  his titles, `why` notes and reviews. Nothing was ever exposed.
+- Both test harnesses now rebuild the frontend when the bundle is **stale**, not only when missing.
+- **`main` is 12 commits ahead of `origin` and NOT pushed** — the owner's standing rule is
+  "do not push without asking", and his earlier "push it all" covered that batch only.
+
 ## What is NOT done, and is genuinely open
 
 - **Local `main` is well ahead of `origin/main` and is NOT pushed.** origin sits at the
