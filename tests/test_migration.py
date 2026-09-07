@@ -529,6 +529,47 @@ def test_foreign_keys_are_off_during_the_rebuild_and_on_again_afterwards(v1_db):
     conn.close()
 
 
+class _SelfRollingBackConnection:
+    """A real connection, except for one statement — which behaves the way SQLITE_FULL,
+    SQLITE_IOERR and SQLITE_BUSY sometimes genuinely do: SQLite ends the transaction on its
+    OWN before the error even reaches Python. `_rebuild_titles`'s `except` clause must not
+    then issue a second, doomed `ROLLBACK` that replaces the real error (F6) — simulated
+    here rather than waited for, the same reasoning as the interrupt tests above: a real
+    `SQLITE_FULL` is not something a test runner can summon on demand."""
+
+    def __init__(self, real, boom_at, boom_with):
+        self._real, self._boom_at, self._boom_with = real, boom_at, boom_with
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    def execute(self, sql, *args, **kwargs):
+        if sql == self._boom_at:
+            self._real.execute("ROLLBACK")   # SQLite's own self-rollback, simulated
+            raise self._boom_with
+        return self._real.execute(sql, *args, **kwargs)
+
+
+def test_a_self_rolled_back_error_is_not_masked_by_the_excepts_own_rollback(v1_db, repo_root):
+    """F6 — before the fix, the bare `ROLLBACK` in `_rebuild_titles`'s `except` clause would
+    itself raise `sqlite3.OperationalError: cannot rollback - no transaction is active` once
+    SQLite had already rolled back on its own, and THAT replaced the real error. The data
+    was never at risk (the rollback already happened); the bug was losing the diagnosis."""
+    schema_text = (repo_root / "backend" / "schema.sql").read_text(encoding="utf-8")
+    conn = dbmod._connect(v1_db)
+    boom = sqlite3.OperationalError("database or disk is full")
+    wrapped = _SelfRollingBackConnection(conn, "PRAGMA foreign_key_check", boom)
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="disk is full"):
+            dbmod._rebuild_titles(wrapped, schema_text)
+        # The transaction really is gone by the time the guard runs — proof this test is
+        # exercising the trap (a self-ended transaction) rather than a transaction that was
+        # still open the whole time, which the OLD code would also have handled fine.
+        assert not conn.in_transaction
+    finally:
+        conn.close()
+
+
 def test_migrate_refuses_a_connection_that_already_has_a_transaction_open(v1_db):
     """`BEGIN IMMEDIATE` and the pragmas around it only mean what they say in autocommit."""
     conn = dbmod._connect(v1_db)
@@ -563,6 +604,44 @@ def test_the_staging_table_is_built_from_schema_sql_itself(repo_root):
     assert "'openlibrary'" in bare and "'book'" in bare and "isbn" in bare
     assert any("idx_titles_source" in o for o in others)
     assert any("user_version" in o for o in others)
+
+
+def test_a_comment_naming_create_table_titles_is_not_mistaken_for_the_real_one():
+    """F7 — the match used to be FOUND on the comment-stripped statement but REWRITTEN on
+    the raw one, and `re.subn(..., count=1)` replaces the FIRST hit in raw text. A comment
+    written before the real DDL that happens to contain the literal "CREATE TABLE titles"
+    (this file's own 16-line header is exactly that shape) would therefore win, leaving the
+    actual table definition untouched — and `count` would still read 1, so nothing would
+    even notice."""
+    schema_text = textwrap.dedent("""\
+        -- A decoy: this comment SAYS "CREATE TABLE titles" but is not one.
+        CREATE TABLE titles (
+            id INTEGER PRIMARY KEY,
+            kind TEXT NOT NULL
+        );
+        CREATE INDEX idx_titles_kind ON titles(kind);
+        PRAGMA user_version = 1;
+    """)
+    create, others = dbmod._split_schema(schema_text, STAGING_TABLE)
+
+    # The decoy is untouched, verbatim — proof the rewrite never went near it.
+    assert '-- A decoy: this comment SAYS "CREATE TABLE titles" but is not one.' in create
+    # The REAL CREATE TABLE was renamed. Under the bug this fails: the substitution landed
+    # on the decoy comment instead, so the actual DDL still said `titles`, and a
+    # comment-stripped read of `create` would never see the staging name at all.
+    bare = dbmod._strip_comments(create)
+    assert f'"{STAGING_TABLE}"' in bare
+    assert "id INTEGER PRIMARY KEY" in bare
+
+
+def test_create_table_titles_pattern_does_not_match_a_sibling_table():
+    """F7 — no word boundary after `titles` meant `CREATE TABLE titles_archive` matched
+    too, since the closing quote is optional and "titles" is then just a valid PREFIX."""
+    assert dbmod._CREATE_TITLES.search("CREATE TABLE titles_archive (id INTEGER)") is None
+    assert dbmod._CREATE_TITLES.search('CREATE TABLE "titles_archive" (id INTEGER)') is None
+    # The real thing, quoted or not, still matches — the fix narrows, it does not break it.
+    assert dbmod._CREATE_TITLES.search("CREATE TABLE titles (id INTEGER)")
+    assert dbmod._CREATE_TITLES.search('CREATE TABLE IF NOT EXISTS "titles" (id INTEGER)')
 
 
 def test_the_schema_file_and_db_py_agree_on_the_version(repo_root):

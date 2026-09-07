@@ -40,8 +40,11 @@ SCHEMA_VERSION = 2
 #: that debris from an impossible crash is recognisable rather than mysterious.
 STAGING_TABLE = "_titles_rebuild_staging"
 
+#: `(?!\w)` after the table name so `titles_archive` (or any future sibling table) can never
+#: match — without it, "titles" is a valid PREFIX match too, since the optional closing quote
+#: is, well, optional.
 _CREATE_TITLES = re.compile(
-    r"(CREATE\s+TABLE\s+)(?:IF\s+NOT\s+EXISTS\s+)?[\"'`\[]?titles[\"'`\]]?",
+    r"(CREATE\s+TABLE\s+)(?:IF\s+NOT\s+EXISTS\s+)?[\"'`\[]?titles[\"'`\]]?(?!\w)",
     re.IGNORECASE,
 )
 
@@ -65,10 +68,18 @@ def _connect(db_path: Path) -> sqlite3.Connection:
 # one thing and the live database said another" is precisely the bug T-16 exists to fix.
 
 
+def _blank(match: re.Match) -> str:
+    """Every character but a newline turned to a space — same LENGTH as what it replaces."""
+    return re.sub(r"[^\n]", " ", match.group(0))
+
+
 def _strip_comments(sql: str) -> str:
-    """`--` and `/* */` removed. Used to LOOK at a statement, never to execute one."""
-    sql = re.sub(r"/\*.*?\*/", " ", sql, flags=re.S)
-    return re.sub(r"--[^\n]*", " ", sql)
+    """`--` and `/* */` blanked out (not deleted — see `_blank`). Used to LOOK at a
+    statement, never to execute one, and LENGTH-PRESERVING on purpose: `_split_schema`
+    finds a match here and then slices the identical span out of the raw, un-stripped text,
+    which only lines up if stripping never shifts anything."""
+    sql = re.sub(r"/\*.*?\*/", _blank, sql, flags=re.S)
+    return re.sub(r"--[^\n]*", _blank, sql)
 
 
 def _statements(script: str) -> list[str]:
@@ -103,13 +114,27 @@ def _split_schema(schema_text: str, staging: str) -> tuple[str, list[str]]:
     """
     create, others = None, []
     for statement in _statements(schema_text):
-        if create is None and _CREATE_TITLES.search(_strip_comments(statement)):
+        stripped = _strip_comments(statement)
+        match = _CREATE_TITLES.search(stripped) if create is None else None
+        if match:
+            # The match was found on the COMMENT-FREE text, so a future comment that happens
+            # to contain the literal "CREATE TABLE titles" can never be mistaken for the real
+            # DDL — that text does not exist any more by the time `.search` runs. The span is
+            # then applied to the RAW statement rather than re-matched there, because
+            # `_CREATE_TITLES.subn` on raw text would find its OWN first hit — which, for a
+            # comment written before the real CREATE TABLE, is the comment, not the DDL below
+            # it. `_strip_comments` is length-preserving for exactly this reason: the span
+            # names the identical characters in both strings, so no offset math is needed.
+            start, end = match.span()
+            assert statement[start:end] == stripped[start:end], (
+                f"a comment inside the CREATE TABLE statement in {SCHEMA_PATH.name} shifted "
+                "the match — refusing to guess which part is really the DDL"
+            )
+            create = statement[:start] + match.expand(rf'\1"{staging}"') + statement[end:]
             # Rewrite only the statement's own table name. Anchored to the CREATE TABLE
-            # token, so the word "titles" in the comments around it is left alone, and the
-            # IF NOT EXISTS is dropped deliberately: staging must never silently reuse a
-            # table that is already there.
-            create, count = _CREATE_TITLES.subn(rf'\1"{staging}"', statement, count=1)
-            if count != 1:
+            # token, and the IF NOT EXISTS is dropped deliberately: staging must never
+            # silently reuse a table that is already there.
+            if f'"{staging}"' not in create:
                 raise RuntimeError(f"could not rename the `titles` CREATE TABLE in {SCHEMA_PATH.name}")
         else:
             others.append(statement)
@@ -234,7 +259,15 @@ def _rebuild_titles(conn: sqlite3.Connection, schema_text: str) -> int:
 
             conn.execute("COMMIT")
         except BaseException:
-            conn.execute("ROLLBACK")
+            # Some SQLite errors (SQLITE_FULL, SQLITE_IOERR, SQLITE_BUSY on some paths) roll
+            # the transaction back themselves before this handler ever runs. A bare ROLLBACK
+            # then raises "cannot rollback - no transaction is active" from inside this
+            # `except`, and THAT is what propagates — the real error that stopped the
+            # migration is gone from the traceback. The data is already safe either way (the
+            # transaction is rolled back one way or the other); this guard is for diagnosis,
+            # not correctness.
+            if conn.in_transaction:
+                conn.execute("ROLLBACK")
             raise
     finally:
         conn.execute(f"PRAGMA foreign_keys = {'ON' if previous_foreign_keys else 'OFF'}")
