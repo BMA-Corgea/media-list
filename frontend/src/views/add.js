@@ -19,6 +19,27 @@ const DEBOUNCE_MS = 250;
 // fire an add.
 const DRAG_THRESHOLD = 6;
 
+/**
+ * T-18: the one thing that survives `addView()`'s own unmount — the query and the results it
+ * produced, kept as ONE value so they can never be shown paired with each other's opposite
+ * number (AC3). Module scope, not a property on the page or a closure that dies with it: a
+ * router-level route swap (`router.js`'s `replaceChildren`) destroys the DOM `addView()`
+ * built, but the module itself stays loaded for the life of the app, so a `let` here is the
+ * simplest thing that outlives one mount.
+ *
+ * Written from exactly one place: `page.cleanup()` below, at the T-15 unmount seam
+ * (`router.js`'s `dismiss`) — the one guaranteed moment the live `input.value` and the last
+ * verified `(query, data)` pair are both still readable, and the last moment before either
+ * is gone. Never written mid-render, and never read as `input.value` — see `cleanup` for why.
+ *
+ * A hand-off between two mounts of the same view is only as good as the ORDER of the two
+ * calls, and that order is the router's to keep, not this file's: `render()` dismisses the
+ * outgoing view before it builds the incoming one, so this write always lands before the
+ * next mount's read. It did not always — see the ordering note in `router.js` (T-18 round
+ * 2, F1) before changing either side.
+ */
+let stash = null;
+
 function candidateCard(candidate, onOpen, onQuickAdd) {
   const card = document.createElement('div');
   card.className = 'card card--pick';
@@ -122,6 +143,10 @@ export async function addView() {
 
   let timer = null;
   let inFlight = null;
+  // This mount's own last SUCCESSFUL (query, data) pair — set only at the bottom of
+  // `renderResults`, never from `input.value`. `cleanup()` is the only reader, and only at
+  // the instant this view is torn down.
+  let lastRun = null;
 
   const say = (text, tone = '') => {
     hint.textContent = text;
@@ -149,6 +174,24 @@ export async function addView() {
     }
   }
 
+  // Paints the grid and the hint from an already-fetched search response — the ONE place
+  // that turns `(query, data)` into pixels, so a fresh fetch (`run`) and a restored stash
+  // (`addView`'s mount below) can never render it two different ways or drift out of sync.
+  function renderResults(query, data) {
+    results.replaceChildren(...data.results.map((c) => candidateCard(c, openCandidate, quickAdd)));
+
+    const broken = Object.entries(data.sources || {}).filter(([, s]) => !s.ok);
+    if (!data.results.length) say(`Nothing found for “${query}”.`);
+    else if (broken.length) say(`${data.results.length} results — but ${broken.map(([n, s]) => `${n} failed (${s.error})`).join(', ')}`, 'bad');
+    else if (data.disabled?.length) say(`${data.results.length} results. ${data.disabled.join(', ')} is not configured, so those are missing.`);
+    else say(`${data.results.length} results. Click one to look, or press + to add it now.`);
+
+    // T-18 AC3: recorded as trustworthy ONLY here, after a search that actually completed
+    // (never aborted, never mid-flight) — this is the pairing `cleanup()` is allowed to
+    // hand off to the next mount.
+    lastRun = { query, data };
+  }
+
   async function run(query) {
     // Abandon whatever is still in the air. Without this, a slow early response can land
     // after a fast later one and the grid answers a query the user has already typed past.
@@ -159,13 +202,7 @@ export async function addView() {
     try {
       const data = await api.search(query, controller.signal);
       if (controller.signal.aborted) return;
-      results.replaceChildren(...data.results.map((c) => candidateCard(c, openCandidate, quickAdd)));
-
-      const broken = Object.entries(data.sources || {}).filter(([, s]) => !s.ok);
-      if (!data.results.length) say(`Nothing found for “${query}”.`);
-      else if (broken.length) say(`${data.results.length} results — but ${broken.map(([n, s]) => `${n} failed (${s.error})`).join(', ')}`, 'bad');
-      else if (data.disabled?.length) say(`${data.results.length} results. ${data.disabled.join(', ')} is not configured, so those are missing.`);
-      else say(`${data.results.length} results. Click one to look, or press + to add it now.`);
+      renderResults(query, data);
     } catch (error) {
       if (error.name === 'AbortError') return;
       say(`Search failed — ${error.message}`, 'bad');
@@ -183,6 +220,47 @@ export async function addView() {
     say('Searching…');
     timer = setTimeout(() => run(query), DEBOUNCE_MS);
   });
+
+  // T-18 AC1/AC3/AC5: restore what was on screen before this view was last torn down, if
+  // anything was. Runs once, at mount, before the user has touched anything.
+  if (stash) {
+    input.value = stash.query;
+    if (stash.data) {
+      // Verified pair — repaint from it directly, no network round-trip (AC5).
+      renderResults(stash.query, stash.data);
+    } else {
+      // The query survived but its results did not check out — re-run rather than showing
+      // nothing, or worse, showing someone else's cards under this text (AC3).
+      say('Searching…');
+      run(stash.query);
+    }
+  }
+
+  // T-15's unmount seam (`router.js`'s `dismiss`): the one guaranteed call, with the DOM
+  // and `input.value` both still alive, right before this screen is gone for good.
+  page.cleanup = () => {
+    // Stop whatever this mount still has in the air. Left running, a debounced timer could
+    // fire long after the user has moved on and silently overwrite `lastRun` — exactly how
+    // a LATER mount's restore could end up built from an EARLIER, now-irrelevant search.
+    if (inFlight) inFlight.abort();
+    clearTimeout(timer);
+
+    // What is actually on screen right now — read once, here, and nowhere else. Never
+    // `input.value` read anywhere but this one moment (see the module-level `stash` doc).
+    const query = input.value.trim();
+    if (query.length < 2) {
+      stash = null;
+    } else if (lastRun && lastRun.query === query) {
+      // The box and the grid still agree: hand the verified pair off whole.
+      stash = lastRun;
+    } else {
+      // The box has moved past whatever last resolved (mid-debounce, or a request that was
+      // still in flight — moot now that it is aborted above). The query text is still worth
+      // keeping so the next mount does not have to be retyped, but it must not be paired
+      // with stale results — the next mount re-runs it instead (AC3).
+      stash = { query, data: null };
+    }
+  };
 
   queueMicrotask(() => input.focus());
   return page;
