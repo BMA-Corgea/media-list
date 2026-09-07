@@ -81,7 +81,7 @@ test('F3 — a book chip exists and spinning inside it still lands on the announ
 });
 
 test('F4 — a book wedge never shares anime\'s computed colour', async ({ page }) => {
-  // All seven wedges, `all` filter, so both kinds sit on the disc at once and their
+  // Every wedge, `all` filter, so both kinds sit on the disc at once and their
   // COMPUTED fills (the `var(--wheel-*)` resolved by the browser, not the attribute text)
   // can be compared directly.
   await expect(page.locator('.wheel__disc .wheel__wedge')).toHaveCount(ITEMS.length);

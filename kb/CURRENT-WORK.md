@@ -85,8 +85,10 @@ from this ticket. F2/F3/F4 are one cluster: the frontend was wired for books in 
 nowhere else — no author on the title page, no `book` chip on queue/seen/wheel, and books wear
 anime's colour on the wheel.
 
-`frontend/src/views/add.js:112` (the "film, series, anime or game" placeholder) is fenced OUT of
-T-16's rework to avoid a conflict with T-18's `add.js` changes. **The merge owner owns that line.**
+~~`frontend/src/views/add.js:112` placeholder is fenced out of T-16's rework.~~ **Done** — applied
+at the merge (`8dc731d`), along with `home.js`'s empty-list copy, which named the same four kinds
+in a second place no review had listed. With `data/` wiped, that empty screen is the first thing
+the owner sees.
 
 ### New standing check — the tenth green-but-empty test
 
@@ -117,13 +119,11 @@ The migration was re-run by the dispatching session on a copy of the owner's dat
 NULL poster stays NULL. Interrupt safety checked at **25 random kill points — 25/25 reopened with
 every row, 0 damaged**. His original is byte-identical (sha256 `5f122ead…`).
 
-### Two patches T-16 deliberately did NOT make (T-18 owned those files)
-Apply after T-18 merges:
-1. **`views/title.js::facts()` branches `game` vs everything-else**, so a book takes the
-   screen-title branch and **never renders its author**. `detail.author` / `detail.pages` are
-   already stored. Exact patch in `.autodev/handoffs/T-16.md`.
-2. `frontend/src/views/add.js:112` placeholder still says "film, series, anime or game" — needs
-   "book". Plus an optional `main.js` comment.
+### ~~Two patches T-16 deliberately did NOT make~~ — BOTH SHIPPED 2026-09-07
+1. ~~`views/title.js::facts()` never renders a book's author.~~ Fixed in T-16's rework, with a
+   browser test that proves the Author fact actually renders (it times out against the pre-fix code).
+2. ~~`add.js` placeholder.~~ Applied at the merge, plus `main.js`'s `media_type` comment and
+   `home.js`'s empty-state copy.
 
 ### T-18's open finding, reproduced and not yet fixed
 `router.js`'s `render()` awaits the incoming view **before** dismissing the outgoing one, and
