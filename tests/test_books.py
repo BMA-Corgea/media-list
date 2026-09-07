@@ -284,7 +284,14 @@ def test_the_same_book_cannot_be_added_twice(client, openlibrary_api):
 def test_a_book_gets_read_not_finished_in_the_kind_map(repo_root):
     """`frontend/src/kinds.js` is the ONE place that decides a game is played and a film is
     watched. Without an entry a book would fall through to 'finished', which is nobody's
-    word for what you do to a book."""
+    word for what you do to a book.
+
+    T-16 round 2, F8: this is a cheap tripwire, kept deliberately, but it never calls
+    `verbFor` and never renders anything — it would stay green if `verbFor` stopped
+    consulting this map entirely. The real assertion is
+    `tests/browser/title.spec.js::"F8 — the mark-as-read verb is genuinely consulted..."`,
+    which opens a book's title page and reads the actual rendered button and past-tense
+    text."""
     kinds = (repo_root / "frontend" / "src" / "kinds.js").read_text(encoding="utf-8")
     book_line = [l for l in kinds.splitlines() if l.strip().startswith("book:")]
     assert book_line, "kinds.js has no `book` entry — a book would be 'finished'"
