@@ -615,3 +615,20 @@ is the lever that makes test credentials deterministic: setting `TMDB_API_KEY` (
 `os.environ` *before* `backend.config` is imported means the module's own
 `load_dotenv(REPO_ROOT / ".env")` call is a no-op for those names, regardless of whether a
 real `.env` with real keys happens to sit next to the code being tested.
+
+## In a hash router, `toHaveURL` is not evidence a screen was ever mounted (T-18)
+
+T-18's own AC3 test — the tenth green-but-empty test on this project — awaited
+`toHaveURL(/#\/add\/tmdb\/…/)` to confirm the candidate screen had opened, then navigated on.
+It never opened. A hash change updates `location` immediately, so `toHaveURL` is satisfied by
+the address bar alone, before the router has resolved, awaited or painted anything. Both queued
+`hashchange` events read `#/add`, Add mounted twice, and the test asserted its way through a
+journey that never happened — green, and proving nothing.
+
+**Assert on something only the destination renders** — a heading, a control, a piece of the
+fetched data. The URL is what you asked for; the DOM is what you got. This is the same rule
+this repo already wrote down for CSS ("assert computed styles, not stylesheet text") and for
+the built bundle ("grep the bundle for a string unique to the new code"): in every case the
+cheap proxy is satisfied by the intention rather than the result.
+
+Caught by the build seat, not the review seat, and repaired at `tests/browser/add.spec.js:496`.

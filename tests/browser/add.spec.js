@@ -101,8 +101,31 @@ function detailsFor(candidate, extra = {}) {
   };
 }
 
+/** Returns the `q` values actually sent to `/api/search`, in order — T-18's AC5 needs to
+ * prove restoring a search costs no NEW round trip, which means counting the real ones. */
 async function mockSearch(page, results) {
-  await page.route('**/api/search**', (route) => route.fulfill({ json: searchEnvelope(results) }));
+  const hits = [];
+  await page.route('**/api/search**', (route) => {
+    hits.push(new URL(route.request().url()).searchParams.get('q'));
+    return route.fulfill({ json: searchEnvelope(results) });
+  });
+  return hits;
+}
+
+/** Like `mockSearch`, but a DIFFERENT result set per query text — T-18 AC3 needs to tell
+ * "query A's grid" and "query B's grid" apart by more than just presence/absence. */
+function mockSearchPerQuery(page, resultsByQuery) {
+  const hits = [];
+  return {
+    hits,
+    async install() {
+      await page.route('**/api/search**', (route) => {
+        const q = new URL(route.request().url()).searchParams.get('q');
+        hits.push(q);
+        return route.fulfill({ json: searchEnvelope(resultsByQuery[q] || []) });
+      });
+    },
+  };
 }
 
 /** Returns the `<source>:<source_id>` keys the page actually asked for, so a test can
@@ -192,9 +215,10 @@ test('AC2 — Back adds nothing and returns to search; the browser\'s own back b
   expect(adds.posts).toEqual([]);
 
   // Reaching the screen again and using the browser's OWN back button must behave the same
-  // way (T-17 locate F4: a real route makes this ordinary navigation, not a rescue). "Back —
-  // add nothing" landed on a fresh, empty search screen (it does not have to remember a
-  // past query), so this searches again before opening the card a second time.
+  // way (T-17 locate F4: a real route makes this ordinary navigation, not a rescue). T-18
+  // means "Back — add nothing" no longer lands on a guaranteed-empty screen — it restores
+  // the 'Dune' search left behind above — but re-filling `#q` with the same text is a no-op
+  // either way, so this is agnostic to which screen it landed on.
   await search(page, 'Dune');
   await page.locator('.card__open').click();
   await expect(page.locator('.hero .title__name')).toHaveText('Dune');
@@ -421,4 +445,230 @@ test('AC7 — an aborted drag on the + leaves it still answering the keyboard', 
   await expect(page.locator('.hint.ok')).toContainText('Added');
   expect(adds.posts).toHaveLength(1);
   expect(adds.posts[0]).toMatchObject({ source: 'tmdb', source_id: '438631', media_type: 'movie' });
+});
+
+/**
+ * T-18 — "fix the back button too" (the owner, verbatim, after driving T-17). Pressing a
+ * card opens a description screen (T-17); going back used to return to `#/add` with an
+ * empty box and no results — measured live, not guessed (T-17's `live-feedback.md`:
+ * `queryAfterBack: ""`, `resultsAfterBack: 0`). His workflow is look-decide-look-at-the-next,
+ * and "Dungeon Crawler Carl" (a novel and a TV entry sharing a name) is exactly the case
+ * comparing candidates exists for.
+ */
+
+test('T-18 AC1/AC5 — the browser back button restores the query and the grid it produced, with no new /api/search call', async ({ page, seed }) => {
+  seed([]);
+  const searchHits = await mockSearch(page, [DUNE]);
+  await mockDetails(page, { 'tmdb:438631': detailsFor(DUNE) });
+
+  await search(page, 'Dune');
+  await expect(page.locator('.card__open')).toHaveCount(1);
+  expect(searchHits).toEqual(['Dune']);
+
+  await page.locator('.card__open').click();
+  await expect(page.locator('.hero .title__name')).toHaveText('Dune');
+
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/add$/);
+
+  // AC1: the query AND the grid it produced are both back — no retyping.
+  await expect(page.locator('#q')).toHaveValue('Dune');
+  await expect(page.locator('.card__open')).toHaveCount(1);
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+
+  // AC5: restoring it cost no new round trip — still exactly the one search from above.
+  expect(searchHits).toEqual(['Dune']);
+});
+
+test('T-18 AC3 — leaving mid-debounce for a NEW query never restores the OLD query\'s grid under the new text', async ({ page, seed }) => {
+  seed([]);
+  const perQuery = mockSearchPerQuery(page, {
+    // Two queries, two DIFFERENT, easily-told-apart result sets — standing in for the
+    // Dungeon Crawler Carl novel-vs-TV case the ticket names: comparing candidates is the
+    // whole point, so query A's card and query B's card must never be confusable.
+    'Dungeon Crawler Carl': [CARL_TV],
+    Carl: [DUNE],
+  });
+  await perQuery.install();
+  await mockDetails(page, { 'tmdb:332437': detailsFor(CARL_TV) });
+
+  await search(page, 'Dungeon Crawler Carl');
+  await expect(page.locator('.card__open')).toHaveCount(1);
+  await expect(page.locator('.card__title')).toHaveText('Dungeon Crawler Carl');
+
+  // Edit the box to a different query and leave the view IMMEDIATELY — well inside the
+  // 250ms debounce (add.js's DEBOUNCE_MS), so "Carl"'s search never reaches the network
+  // before the navigation below tears this view down. The grid on screen at the moment of
+  // the click is still query A's — that mismatch (box says "Carl", grid says A) is the
+  // exact state the trap lives in.
+  await page.fill('#q', 'Carl');
+  await page.locator('.card__open').click();
+  await expect(page).toHaveURL(/#\/add\/tmdb\/332437\/tv$/);
+  // WAIT FOR THE SCREEN, NOT THE URL (T-18 round 2). `toHaveURL` is satisfied by the hash
+  // alone, and `router.js` renders from `current()` — the live hash — rather than from the
+  // event, so a `goBack()` issued before the click's `hashchange` task has run leaves BOTH
+  // queued events reading `#/add`: the candidate screen is never mounted at all and Add is
+  // mounted twice instead. Measured, not guessed — an in-page MutationObserver logged
+  // `HASHCHANGE -> #/add (event newURL #/add/tmdb/332437/tv)` followed by two `MOUNT page`
+  // records and no candidate screen. This assertion is what makes the test perform the
+  // round trip its own name describes.
+  await expect(page.locator('.hero .title__name')).toHaveText('Dungeon Crawler Carl');
+
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/add$/);
+
+  // The box holds what was actually typed …
+  await expect(page.locator('#q')).toHaveValue('Carl');
+  // … and once things settle, the grid is query B's OWN result — freshly re-run, never A's
+  // card wearing B's label.
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+  // Proof it was actually RE-RUN, not silently served from the stale pair: two real
+  // searches, "Carl" only after coming back, never a stray third from the cancelled timer.
+  expect(perQuery.hits).toEqual(['Dungeon Crawler Carl', 'Carl']);
+});
+
+test('T-18 AC4 — a fresh #/add (no prior search this session) still shows an empty box and no results', async ({ page, seed }) => {
+  seed([]);
+  await expect(page.locator('#q')).toHaveValue('');
+  await expect(page.locator('.card__open')).toHaveCount(0);
+});
+
+/**
+ * T-18 round 2 — what the first round's three tests could not see.
+ *
+ * All three navigated Add → candidate → Add, and `views/candidate.js` resolves its mocked
+ * `/api/details` in about a millisecond. Nothing in the suite ever put a genuinely slow
+ * screen in the middle, which is the only shape the router bug below has.
+ */
+
+/** The real navigation the owner uses — a tab in the top bar, not a hash written by hand.
+ * Addressed by `data-path` rather than by accessible name because "Add" is also the start
+ * of the card's own `+` button label and of the description screen's "Add to the list". */
+const navChip = (page, path) => page.locator(`.topbar .chip[data-path="${path}"]`);
+
+/**
+ * Stamp the screen that is on display right now, so a later assertion can prove it is
+ * reading a DIFFERENT, freshly-built one. Both halves of F1 leave "Dune" in the box on the
+ * OLD node too, and `router.js` does not remove that node until the incoming view resolves
+ * — so "the query is still there" means nothing until the node it was read from is known
+ * to be the new mount (kb/wiki/lessons.md: the DOM you read is in a race with the thing
+ * you did not name).
+ */
+async function stampMountedScreen(page) {
+  await page.locator('main.page').evaluate((node) => { node.dataset.probe = 'first-mount'; });
+}
+
+async function expectRemounted(page) {
+  await expect(page.locator('main.page')).not.toHaveAttribute('data-probe', 'first-mount');
+}
+
+test('T-18 F1 — bouncing off a genuinely SLOW screen and back still restores the search', async ({ page, seed }) => {
+  seed([{ title: 'Existing One', kind: 'movie' }]);
+  const searchHits = await mockSearch(page, [DUNE]);
+
+  // The intermediate screen is `views/queue.js` — a real view, really awaiting its real
+  // request, with that request held open at the network layer for 1.5s. Nothing here
+  // simulates slowness inside the app: the delay is on the wire, exactly where a slow
+  // server's would be, and the queue view is genuinely still sitting on its `await`.
+  let queueAsked = 0;
+  let queueAnswered = 0;
+  await page.route(
+    (url) => url.pathname === '/api/titles' && url.searchParams.get('status') === 'queued',
+    async (route) => {
+      queueAsked += 1;
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      queueAnswered += 1;
+      // Let the real backend answer it — a mocked body would still be a real round trip,
+      // but there is no reason to fake one.
+      await route.continue().catch(() => { /* the run ended while this was parked */ });
+    },
+  );
+
+  await search(page, 'Dune');
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+  expect(searchHits).toEqual(['Dune']);
+  await stampMountedScreen(page);
+
+  // Leave for the queue, and come back BEFORE it has answered. This is the whole test:
+  // `addView()` is the only synchronous view in the app, so the second Add mount runs
+  // while the first one is still waiting to be dismissed behind the queue's `await`.
+  await navChip(page, 'queue').click();
+  await page.waitForTimeout(300);
+  expect(queueAsked, 'the intermediate view must really have gone to the network').toBe(1);
+  expect(queueAnswered, 'and must still be waiting on it when Add is remounted').toBe(0);
+  await navChip(page, 'add').click();
+
+  // A different node from the one stamped above — this is the second Add mount, and it is
+  // the one being read below.
+  await expectRemounted(page);
+  await expect(page.locator('#q')).toHaveValue('Dune');
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+
+  // Still true once the slow view finally answers into a screen nobody is on any more.
+  await page.waitForTimeout(1600);
+  expect(queueAnswered).toBe(1);
+  await expect(page).toHaveURL(/#\/add$/);
+  await expect(page.locator('#q')).toHaveValue('Dune');
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+  // AC5 holds across the bounce too: the restore cost no new round trip.
+  expect(searchHits).toEqual(['Dune']);
+});
+
+
+/**
+ * F2, direction one. The restore is NOT limited to coming back from a candidate screen —
+ * `stash` survives any departure from Add. That is deliberate (the ticket exists so the
+ * owner does not retype, which is just as true returning from the Queue tab as from a
+ * candidate), and AC4's "not via back" wording is loose rather than a second rule. Pinned
+ * here so it cannot be quietly narrowed later.
+ */
+test('T-18 F2 — leaving Add for an unrelated screen and returning by the tab restores, with no back button and no candidate involved', async ({ page, seed }) => {
+  seed([{ title: 'Existing One', kind: 'movie' }]);
+  const searchHits = await mockSearch(page, [DUNE]);
+
+  await search(page, 'Dune');
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+  await stampMountedScreen(page);
+
+  // A forward navigation to a screen with nothing to do with adding — and it really
+  // rendered, so this is not a bounce that never left.
+  await navChip(page, 'queue').click();
+  await expect(page.locator('.qrow__title')).toHaveText('Existing One');
+
+  await navChip(page, 'add').click();
+  await expectRemounted(page);
+  await expect(page.locator('#q')).toHaveValue('Dune');
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+  expect(searchHits).toEqual(['Dune']);
+});
+
+/**
+ * F2, direction two. "Fresh" means *no prior search this session* — not "arrived by any
+ * particular route". Two ways of being fresh, both asserted, so the test above cannot be
+ * satisfied by a view that simply always restores something.
+ */
+test('T-18 F2/AC4/AC6 — "fresh" is no search THIS session: never-searched navigation stays empty, and a reload wipes the stash', async ({ page, seed }) => {
+  seed([{ title: 'Existing One', kind: 'movie' }]);
+  const searchHits = await mockSearch(page, [DUNE]);
+
+  // Fresh, sense one: this session has never searched. Having been on Add before is not
+  // what the restore keys on, so leaving and returning must invent nothing.
+  await navChip(page, 'queue').click();
+  await expect(page.locator('.qrow__title')).toHaveText('Existing One');
+  await navChip(page, 'add').click();
+  await expect(page.locator('#q')).toHaveValue('');
+  await expect(page.locator('.card__open')).toHaveCount(0);
+  expect(searchHits).toEqual([]);
+
+  // Now there IS something to restore …
+  await search(page, 'Dune');
+  await expect(page.locator('.card__title')).toHaveText('Dune');
+
+  // … and fresh, sense two: a full reload re-evaluates the module, so the module-scoped
+  // stash goes with it. That is AC6's recorded answer — no storage backing, on purpose —
+  // and it is the outer edge of "this session".
+  await page.reload();
+  await expect(page.locator('#q')).toHaveValue('');
+  await expect(page.locator('.card__open')).toHaveCount(0);
+  expect(searchHits).toEqual(['Dune']);
 });
