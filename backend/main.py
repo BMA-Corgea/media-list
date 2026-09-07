@@ -101,7 +101,13 @@ async def search(q: str = Query(min_length=1, max_length=120)) -> JSONResponse:
         if isinstance(outcome, SourceError):
             status[name] = {"ok": False, "error": outcome.detail}
         elif isinstance(outcome, Exception):
-            status[name] = {"ok": False, "error": str(outcome)}
+            # `or type(...).__name__` because several httpx timeout exceptions stringify to
+            # the EMPTY string — `str(httpx.ConnectTimeout())` is `''`. Without the fallback
+            # the UI names the dead source and then gives no reason at all, which is the
+            # failure this whole status dict exists to prevent. Open Library made it visible:
+            # it is the one source with no credential gate, so it is asked on every search
+            # and its connect genuinely does time out now and then.
+            status[name] = {"ok": False, "error": str(outcome) or type(outcome).__name__}
         else:
             status[name] = {"ok": True, "count": len(outcome)}
             results.extend(outcome)

@@ -241,6 +241,29 @@ def test_search_returns_books_and_names_the_sources_that_died(client, openlibrar
     assert body["disabled"] == []
 
 
+def test_a_source_that_dies_without_a_message_still_says_what_killed_it(client, openlibrary_api, monkeypatch):
+    """Several httpx timeout exceptions stringify to the EMPTY string, so reporting
+    `str(exc)` named the dead source and then gave no reason whatsoever — the exact silence
+    the `sources` dict exists to break.
+
+    Open Library is why this is not theoretical: it is the one source with no credential
+    gate, so it is asked on every single search, and its connect times out often enough to
+    see by hand (observed 1 in 3 against the live API from this machine, 2026-09-07).
+    """
+    import httpx
+    import backend.main as main_module
+
+    async def timed_out(query: str):
+        raise httpx.ConnectTimeout("")
+
+    assert str(httpx.ConnectTimeout("")) == "", "the premise of this test is that it is empty"
+    monkeypatch.setattr(main_module.openlibrary, "search", timed_out)
+
+    body = client.get("/api/search", params={"q": "The Dispossessed"}).json()
+    assert body["sources"]["openlibrary"]["ok"] is False
+    assert body["sources"]["openlibrary"]["error"] == "ConnectTimeout"
+
+
 def test_open_library_is_consulted_even_with_no_credentials_at_all(client, openlibrary_api, monkeypatch):
     """The fresh-clone case: an empty .env used to mean a 503 and no search at all. Books
     need no key, so search now works and says which sources are switched off."""
