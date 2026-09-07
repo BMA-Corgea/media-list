@@ -139,3 +139,20 @@ test('a reorder inside a kind filter uses the ids the filter SHOWS, never the un
   await expect(page.locator('.qrow')).toHaveCount(3);
   expect(await visibleIds(page)).toEqual([animeB, animeA, animeC].map(String));
 });
+
+// T-16 round 2, F3 — `book` was missing from this chip row: visible under `all`, but with
+// no way to narrow the queue down to it, unlike every other kind.
+test('F3 — a book can be filtered to in the queue', async ({ page, seed }) => {
+  const [movieId, bookId] = seed([
+    { title: 'Queue Movie', kind: 'movie' },
+    { title: 'Queue Book', kind: 'book' },
+  ]);
+  await page.goto('/#/queue');
+  await expect(page.locator('.qrow')).toHaveCount(2);
+
+  await page.getByRole('button', { name: 'book', exact: true }).click();
+  await expect(page.locator('.qrow')).toHaveCount(1);
+  expect(await visibleIds(page)).toEqual([String(bookId)]);
+  await expect(page.locator('.qrow .qrow__title')).toHaveText('Queue Book');
+  await expect(page.locator('.qrow .kind')).toHaveText('book');
+});
