@@ -48,3 +48,6 @@ htmlcov/
 test-results/
 playwright-report/
 blob-report/
+
+# state-map's recordings of the test suite (`state-map show`), made again on every run
+.state-map/

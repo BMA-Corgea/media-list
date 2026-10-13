@@ -182,6 +182,11 @@ scripts/test.sh --cov
 Any other argument is forwarded straight to `pytest` — `scripts/test.sh -k queue_order`,
 `scripts/test.sh -x`, and so on.
 
+To see what the tests do, run `state-map show` (or `state-map show move_title` for one function).
+It records the suite and opens a viewer that plays each test back step by step. It's opt-in: a
+plain test run doesn't change. It needs state-map on this machine, and writes only under
+`.state-map/`, which git ignores.
+
 ---
 
 ## Skins
